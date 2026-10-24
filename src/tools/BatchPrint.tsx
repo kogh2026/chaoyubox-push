@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { analyzeFile, type ColorMode, type FileAnalysis } from '../lib/pdfAnalyze';
 import { quote, sheetCount, formatCents, type FileRow, type PageMode, type Quote } from '../lib/quote';
 import { useSettings, priceRowOf, presetFromPriceRow, detectFromName, reclassify } from '../lib/appSettings';
 import { RED_STAMP_THRESHOLD } from '../lib/pdfAnalyze';
 import { useHotkeyActions } from '../lib/hotkeys';
+import { HANDOFF_BATCH_PRINT, handoffToFileList } from '../lib/handoff';
 
 /* ===== 打印记录（localStorage） ===== */
 interface PrintRecord {
@@ -202,6 +203,20 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
     const bad = results.filter((r) => r.pages === 0).length;
     if (bad > 0) showToast(`${bad} 个文件读取失败，已按空条目计入`);
   }
+
+  // 接收「PDF 预处理」等工具发来的文件（ref 模式读最新 handleFiles，避免闭包过期）
+  const handleFilesRef = useRef(handleFiles);
+  handleFilesRef.current = handleFiles;
+  useEffect(() => {
+    const onHandoff = (e: Event) => {
+      const files = (e as CustomEvent<{ name: string; data: Uint8Array }[]>).detail;
+      if (!files || files.length === 0) return;
+      void handleFilesRef.current(handoffToFileList(files));
+      showToast(`已从其他工具导入 ${files.length} 个 PDF`);
+    };
+    window.addEventListener(HANDOFF_BATCH_PRINT, onHandoff);
+    return () => window.removeEventListener(HANDOFF_BATCH_PRINT, onHandoff);
+  }, []);
 
   function updateRow(i: number, patch: Partial<FileRow>) {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
