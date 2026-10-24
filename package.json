@@ -1,0 +1,53 @@
+{
+  "name": "chaoyu-gongzuotai",
+  "private": true,
+  "version": "0.0.2",
+  "type": "module",
+  "description": "超誉工作台 clone — 桌面工具箱（批量打印 / 证卡拼版），Electron + Vite + React",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "electron": "electron .",
+    "electron:dev": "CHAOYU_DEV=1 electron .",
+    "pack": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
+    "jspdf": "^4.2.1",
+    "pdfjs-dist": "^4.7.76",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
+  },
+  "build": {
+    "appId": "com.chaoyu.clone",
+    "productName": "超誉工作台 clone",
+    "electronDist": "node_modules/electron/dist",
+    "electronDownload": {
+      "isVerifyChecksum": false
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

@@ -1,0 +1,674 @@
+import { useState } from 'react';
+import { jsPDF } from 'jspdf';
+import { useSettings, type PriceRow, type PrinterPreset, type AppSettings } from '../lib/appSettings';
+
+type Tab =
+  | 'account'
+  | 'shop'
+  | 'price'
+  | 'general'
+  | 'print-preset'
+  | 'shortcut'
+  | 'lab'
+  | 'about';
+
+const NAV: { group: string; items: { id: Tab; name: string; icon: string }[] }[] = [
+  { group: '账号', items: [{ id: 'account', name: '账号', icon: '👤' }] },
+  {
+    group: '店铺',
+    items: [
+      { id: 'shop', name: '店铺信息', icon: '🏪' },
+      { id: 'price', name: '打印价格', icon: '¥' },
+    ],
+  },
+  {
+    group: '偏好',
+    items: [
+      { id: 'general', name: '通用', icon: '⚙' },
+      { id: 'print-preset', name: '打印预设', icon: '🖨' },
+      { id: 'shortcut', name: '快捷键', icon: '⌨' },
+    ],
+  },
+  { group: '', items: [{ id: 'lab', name: '实验功能', icon: '🧪' }, { id: 'about', name: '关于', icon: 'ⓘ' }] },
+];
+
+export default function Settings({ initialTab }: { initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'general');
+  const [s, update] = useSettings();
+
+  return (
+    <div className="st">
+      <aside className="st-nav">
+        {NAV.map((g, gi) => (
+          <div key={gi}>
+            {g.group && <div className="st-nav-g">{g.group}</div>}
+            {g.items.map((it) => (
+              <button
+                key={it.id}
+                className={'st-nav-i' + (tab === it.id ? ' on' : '')}
+                onClick={() => setTab(it.id)}
+              >
+                <span className="st-nav-ic">{it.icon}</span>
+                {it.name}
+              </button>
+            ))}
+            {gi < NAV.length - 1 && <div className="st-nav-sep" />}
+          </div>
+        ))}
+      </aside>
+      <section className="st-body">
+        {tab === 'account' && <AccountPage />}
+        {tab === 'shop' && <ShopPage s={s} update={update} />}
+        {tab === 'price' && <PricePage s={s} update={update} />}
+        {tab === 'general' && <GeneralPage s={s} update={update} />}
+        {tab === 'print-preset' && <PrintPresetPage s={s} update={update} />}
+        {tab === 'shortcut' && <ShortcutPage />}
+        {tab === 'lab' && <LabPage s={s} update={update} />}
+        {tab === 'about' && <AboutPage />}
+      </section>
+    </div>
+  );
+}
+
+/* ===== 账号 ===== */
+function AccountPage() {
+  return (
+    <div className="st-page">
+      <h1>账号</h1>
+      <p className="muted">克隆版暂未接入账号体系（原版需微信扫码登录，用于同步店铺信息与积分）。</p>
+      <div className="st-card">
+        <p className="muted">所有设置当前只存在这台电脑的浏览器本地。桌面版可接入 electron-store 与微信登录。</p>
+      </div>
+    </div>
+  );
+}
+
+/* ===== 店铺信息 ===== */
+function ShopPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSettings>) => void }) {
+  return (
+    <div className="st-page">
+      <h1>店铺信息</h1>
+      <p className="muted">用于打印测试页、宣传二维码等场景的落款。</p>
+      <div className="st-card st-form">
+        <label>
+          <span>店名</span>
+          <input value={s.shopName} onChange={(e) => update({ shopName: e.target.value })} placeholder="如：向阳图文快印" />
+        </label>
+        <label>
+          <span>电话</span>
+          <input value={s.shopPhone} onChange={(e) => update({ shopPhone: e.target.value })} placeholder="如：13800000000" />
+        </label>
+        <label>
+          <span>地址</span>
+          <input value={s.shopAddress} onChange={(e) => update({ shopAddress: e.target.value })} placeholder="店铺地址" />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/* ===== 打印价格 ===== */
+function PricePage({ s, update }: { s: AppSettings; update: (p: Partial<AppSettings>) => void }) {
+  const [ladderPaper, setLadderPaper] = useState<string | null>(null);
+
+  function editRow(paper: string, patch: Partial<PriceRow>) {
+    update({ prices: s.prices.map((r) => (r.paper === paper ? { ...r, ...patch } : r)) });
+  }
+
+  return (
+    <div className="st-page st-wide">
+      <h1>打印价格</h1>
+      <p className="muted">批量打印按它报价，单位是元 / 面；在批量打印的「预计」里也能改，是同一份。</p>
+      <div className="st-card">
+        <div className="st-dot-th">
+          <b>点彩</b>：彩色占比低于
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={s.dotThreshold}
+            onChange={(e) => update({ dotThreshold: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+          />
+          % 的页
+        </div>
+        <p className="muted">
+          红章、彩色标题、小 logo 这类只有一点色彩的页按点彩收；彩色更多的按彩色，几乎看不出颜色的（不到 0.05%）按黑白。
+        </p>
+
+        <table className="st-price">
+          <thead>
+            <tr>
+              <th rowSpan={2}>纸张</th>
+              <th colSpan={2}>黑白</th>
+              <th colSpan={2}>点彩</th>
+              <th colSpan={2}>彩色</th>
+              <th rowSpan={2}></th>
+            </tr>
+            <tr>
+              <th>单面</th>
+              <th>双面</th>
+              <th>单面</th>
+              <th>双面</th>
+              <th>单面</th>
+              <th>双面</th>
+            </tr>
+          </thead>
+          <tbody>
+            {s.prices.map((r) => (
+              <tr key={r.paper}>
+                <td className="st-paper">
+                  <b>{r.paper}</b>
+                  <button className="link" onClick={() => setLadderPaper(ladderPaper === r.paper ? null : r.paper)}>
+                    {r.ladder ? '阶梯价 ✓' : '+ 阶梯价'}
+                  </button>
+                </td>
+                <PCell v={r.bw1} on={(v) => editRow(r.paper, { bw1: v })} />
+                <PCell v={r.bw2} on={(v) => editRow(r.paper, { bw2: v })} />
+                <PCell v={r.dot1} on={(v) => editRow(r.paper, { dot1: v })} />
+                <PCell v={r.dot2} on={(v) => editRow(r.paper, { dot2: v })} />
+                <PCell v={r.color1} on={(v) => editRow(r.paper, { color1: v })} />
+                <PCell v={r.color2} on={(v) => editRow(r.paper, { color2: v })} />
+                <td>
+                  <button
+                    className="link danger"
+                    onClick={() => update({ prices: s.prices.filter((x) => x.paper !== r.paper) })}
+                    title="删除该纸张"
+                  >
+                    删
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {ladderPaper &&
+          (() => {
+            const row = s.prices.find((x) => x.paper === ladderPaper);
+            if (!row) return null;
+            return (
+              <div className="st-ladder">
+                <b>{row.paper} 阶梯价</b>：满
+                <input
+                  type="number"
+                  min={0}
+                  value={row.ladder?.min ?? 100}
+                  onChange={(e) =>
+                    editRow(row.paper, {
+                      ladder: { min: Number(e.target.value) || 0, unit: row.ladder?.unit ?? row.bw1 * 0.8 },
+                    })
+                  }
+                />
+                面，每面单价封顶
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={row.ladder?.unit ?? 0}
+                  onChange={(e) =>
+                    editRow(row.paper, {
+                      ladder: { min: row.ladder?.min ?? 100, unit: Number(e.target.value) || 0 },
+                    })
+                  }
+                />
+                元（黑白/点彩/彩色都按此封顶取低）
+                <button className="link danger" onClick={() => editRow(row.paper, { ladder: null })}>
+                  移除阶梯价
+                </button>
+              </div>
+            );
+          })()}
+
+        <p className="muted st-foot-note">双面按每一面计价。</p>
+        <button
+          className="btn"
+          onClick={() => {
+            const name = window.prompt('新纸张名称（如 B5、16K）：');
+            if (!name) return;
+            if (s.prices.some((r) => r.paper === name)) return;
+            update({
+              prices: [...s.prices, { paper: name, bw1: 0.5, bw2: 0.4, dot1: 0.7, dot2: 0.6, color1: 1, color2: 0.8, ladder: null }],
+            });
+          }}
+        >
+          + 添加纸张
+        </button>
+      </div>
+      <p className="muted st-only-local">只存在这台电脑上。<a>微信登录</a>后，店里每台电脑用同一份。</p>
+    </div>
+  );
+}
+
+function PCell({ v, on }: { v: number; on: (v: number) => void }) {
+  return (
+    <td>
+      <input
+        type="number"
+        min={0}
+        step={0.1}
+        value={v}
+        onChange={(e) => on(Math.max(0, Number(e.target.value) || 0))}
+      />
+    </td>
+  );
+}
+
+/* ===== 通用 ===== */
+const ZOOMS = [80, 90, 100, 110, 125, 150];
+
+function GeneralPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSettings>) => void }) {
+  async function pickFolder() {
+    const api = (window as unknown as {
+      electronAPI?: { pickFolder?: () => Promise<string | null> };
+    }).electronAPI;
+    if (api?.pickFolder) {
+      const dir = await api.pickFolder();
+      if (dir) update({ exportDir: dir });
+    } else {
+      const dir = window.prompt('输入默认保存目录（桌面版可直接选择文件夹）：', s.exportDir);
+      if (dir !== null) update({ exportDir: dir });
+    }
+  }
+
+  return (
+    <div className="st-page">
+      <h1>通用</h1>
+      <p className="muted">外观与桌面端行为。</p>
+
+      <div className="st-sec">
+        <h2>外观主题</h2>
+        <p className="muted">主题色会立即在软件本体生效。</p>
+        <div className="st-seg">
+          {(
+            [
+              ['system', '跟随系统'],
+              ['light', '浅色'],
+              ['dark', '深色'],
+            ] as const
+          ).map(([v, label]) => (
+            <button key={v} className={s.theme === v ? 'on' : ''} onClick={() => update({ theme: v })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="st-sec">
+        <h2>界面缩放</h2>
+        <p className="muted">
+          整体放大文字、图标和按钮；适合高分屏展示。也可用 Ctrl+加号 缩放，Ctrl+0 恢复 100%。
+        </p>
+        <select value={s.zoom} onChange={(e) => update({ zoom: Number(e.target.value) })}>
+          {ZOOMS.map((z) => (
+            <option key={z} value={z}>
+              {z}%
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="st-sec">
+        <h2>开机自动启动</h2>
+        <p className="muted">登录桌面后自动运行扫瞄工具箱。</p>
+        <Toggle on={s.autoStart} onchg={(v) => update({ autoStart: v })} />
+      </div>
+
+      <div className="st-sec">
+        <h2>关闭时最小化到托盘</h2>
+        <p className="muted">关闭主窗口时点击后不显示退出，可从托盘图标重新打开或退出。</p>
+        <Toggle on={s.closeToTray} onchg={(v) => update({ closeToTray: v })} />
+      </div>
+
+      <div className="st-sec">
+        <h2>新版本提示</h2>
+        <p className="muted">有新版本时在导航页提示，点击后自动下载安装；不会自动下载或重启。</p>
+        <span className={'st-flag' + (s.updateNotify ? ' on' : '')}>{s.updateNotify ? '已开启' : '已关闭'}</span>
+      </div>
+
+      <div className="st-sec">
+        <h2>导出</h2>
+        <p className="muted">文件存在与处理设置。</p>
+        <h3>默认保存位置</h3>
+        <p className="muted">每次导出后自动选择到该位置。</p>
+        <div className="st-row">
+          <span className="muted">{s.exportDir || '未设置（导出时手动选择）'}</span>
+          <button className="btn" onClick={pickFolder}>
+            选择文件夹
+          </button>
+        </div>
+        <h3>证件照使用原文件名</h3>
+        <p className="muted">
+          导出的单张照片可直接与该证件照图片合并；不用照时尺寸、DPI 或单张。修改方为 JPG / PDF；多人合照以第姓名+张数命名。重名或重新导出时自动命名。
+        </p>
+        <Toggle on={s.idPhotoUseOrigName} onchg={(v) => update({ idPhotoUseOrigName: v })} />
+        <h3>导出后打开所在文件夹</h3>
+        <p className="muted">导出成功后自动打开保存位置；PDF 在文件夹中显示，照片文件直接打开。</p>
+        <Toggle on={s.exportOpenFolder} onchg={(v) => update({ exportOpenFolder: v })} />
+      </div>
+
+      <div className="st-sec">
+        <h2>批量打印</h2>
+        <h3>按文件名自动识别份数、颜色、单双面</h3>
+        <p className="muted">
+          文件名或所在文件夹名里带了「(5份)」「(彩色)」「黑白」「双面」「单面」等标记，加入时被测设置，添加后若点错，失败点选项结果，可以在列表里改或清空文件名重新导入。
+        </p>
+        <Toggle on={s.bpAutoDetect} onchg={(v) => update({ bpAutoDetect: v })} />
+      </div>
+
+      <div className="st-sec">
+        <h2>Word/PPT/Excel 转 PDF</h2>
+        <h3>转换完成后打开</h3>
+        <Toggle on={s.officeOpenAfter} onchg={(v) => update({ officeOpenAfter: v })} />
+        <p className="muted">桌面版依赖本机 LibreOffice；Web 版此设置不生效。</p>
+      </div>
+    </div>
+  );
+}
+
+function Toggle({ on, onchg }: { on: boolean; onchg: (v: boolean) => void }) {
+  return (
+    <label className="st-switch">
+      <input type="checkbox" checked={on} onChange={(e) => onchg(e.target.checked)} />
+      <i />
+    </label>
+  );
+}
+
+/* ===== 打印预设 ===== */
+function PrintPresetPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSettings>) => void }) {
+  const [selId, setSelId] = useState(0);
+  const sel = s.printPresets.find((p) => p.id === selId) ?? s.printPresets[0];
+
+  function editSel(patch: Partial<PrinterPreset>) {
+    update({ printPresets: s.printPresets.map((p) => (p.id === sel.id ? { ...p, ...patch } : p)) });
+  }
+
+  function add() {
+    const np: PrinterPreset = {
+      id: s.printPresets.reduce((m, p) => Math.max(m, p.id), 0) + 1,
+      name: '我的预设',
+      printer: 'auto',
+      paper: 'follow',
+      color: 'ask',
+      duplex: 'ask',
+      driver: 'windows',
+    };
+    update({ printPresets: [...s.printPresets, np] });
+    setSelId(np.id);
+  }
+
+  function del(id: number) {
+    const next = s.printPresets.filter((p) => p.id !== id);
+    update({ printPresets: next });
+    setSelId(next[0]?.id ?? 0);
+  }
+
+  return (
+    <div className="st-page">
+      <h1>打印预设</h1>
+      <p className="muted">把常用的打印机、纸张、颜色和打印首选项存成预设，各个工具打印时直接选用。</p>
+      <div className="st-pp">
+        <aside className="st-pp-list">
+          {s.printPresets.map((p) => (
+            <button
+              key={p.id}
+              className={'st-pp-i' + (sel?.id === p.id ? ' on' : '')}
+              onClick={() => setSelId(p.id)}
+            >
+              <span className="st-pp-name">
+                {p.name}
+                {p.builtin && <em>内置</em>}
+              </span>
+              <span className="muted">
+                {p.builtin ? '打印时选打印机，首选项跟随 Windows' : '固定打印机与首选项'}
+              </span>
+            </button>
+          ))}
+          <div className="st-pp-add">
+            <button className="link" onClick={add}>
+              + 新增
+            </button>
+          </div>
+          <div className="st-pp-mine">
+            <div className="st-nav-g">我的预设</div>
+            <p className="muted">{s.printPresets.filter((p) => !p.builtin).length === 0 ? '还没有自己的预设' : `${s.printPresets.filter((p) => !p.builtin).length} 个`}</p>
+          </div>
+        </aside>
+
+        {sel && (
+          <div className="st-pp-detail">
+            <h2>
+              {sel.name} <em className="muted">{sel.builtin ? '内置' : ''}</em>
+            </h2>
+            {sel.builtin ? (
+              <p className="muted">不选预设时就按它打印。内置，不能修改或删除。</p>
+            ) : (
+              <input className="st-name" value={sel.name} onChange={(e) => editSel({ name: e.target.value })} />
+            )}
+            <dl className="st-dl">
+              <dt>打印机</dt>
+              <dd>{sel.builtin ? '打印时选，记住上次用的' : sel.printer === 'auto' ? '打印时选' : sel.printer}</dd>
+              <dt>纸张</dt>
+              <dd>{sel.builtin ? '跟着拼版' : sel.paper === 'follow' ? '跟着拼版' : sel.paper}</dd>
+              <dt>颜色、单双面</dt>
+              <dd>{sel.builtin ? '打印时选' : sel.color === 'ask' ? '打印时选' : sel.color === 'bw' ? '黑白' : '彩色'} / {sel.duplex === 'ask' ? '打印时选' : sel.duplex === 'duplex' ? '双面' : '单面'}</dd>
+              <dt>打印首选项</dt>
+              <dd>
+                {sel.builtin
+                  ? '跟随 Windows：用这台打印机在 Windows 里的设置（介质、质量、色彩）。打印时点「Windows 打印首选项」可以改，但其他软件也会跟着变。'
+                  : sel.driver === 'windows'
+                    ? '跟随 Windows'
+                    : sel.driver}
+              </dd>
+            </dl>
+            {!sel.builtin && (
+              <>
+                <div className="st-pp-edit">
+                  <label>
+                    打印机
+                    <input
+                      value={sel.printer === 'auto' ? '' : sel.printer}
+                      placeholder="留空 = 打印时选"
+                      onChange={(e) => editSel({ printer: e.target.value || 'auto' })}
+                    />
+                  </label>
+                  <label>
+                    纸张
+                    <select value={sel.paper} onChange={(e) => editSel({ paper: e.target.value })}>
+                      <option value="follow">跟着拼版</option>
+                      {['A4', 'A3', 'A5', '6寸', 'R6', '5寸'].map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    颜色
+                    <select
+                      value={sel.color}
+                      onChange={(e) => editSel({ color: e.target.value as PrinterPreset['color'] })}
+                    >
+                      <option value="ask">打印时选</option>
+                      <option value="bw">黑白</option>
+                      <option value="color">彩色</option>
+                    </select>
+                  </label>
+                  <label>
+                    单双面
+                    <select
+                      value={sel.duplex}
+                      onChange={(e) => editSel({ duplex: e.target.value as PrinterPreset['duplex'] })}
+                    >
+                      <option value="ask">打印时选</option>
+                      <option value="simplex">单面</option>
+                      <option value="duplex">双面</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="st-row">
+                  <button className="btn danger" onClick={() => del(sel.id)}>
+                    删除此预设
+                  </button>
+                </div>
+              </>
+            )}
+            <p className="muted st-pp-tip">
+              想固定用某台打印机、照片纸张和质量，又不暗改 Windows 的设置：点左边「新增」建一份预设，单独设置它的打印首选项。
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ===== 快捷键 ===== */
+function ShortcutPage() {
+  const KEYS: [string, string][] = [
+    ['Ctrl K', '搜索工具'],
+    ['Ctrl O', '导入文件（当前工具）'],
+    ['Ctrl P', '打印（当前工具）'],
+    ['Ctrl S', '导出 / 保存 PDF（当前工具）'],
+    ['Ctrl 加号 / 减号', '界面缩放'],
+    ['Ctrl 0', '界面缩放恢复 100%'],
+    ['Delete', '移除选中项（列表内）'],
+  ];
+  return (
+    <div className="st-page">
+      <h1>快捷键</h1>
+      <div className="st-card">
+        <table className="st-keys">
+          <tbody>
+            {KEYS.map(([k, d]) => (
+              <tr key={k}>
+                <td>
+                  <kbd>{k}</kbd>
+                </td>
+                <td className="muted">{d}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ===== 实验功能 ===== */
+const TEST_SIZES: [string, number, number][] = [
+  ['6 寸', 102, 152],
+  ['R6', 127, 89],
+  ['5 寸', 89, 127],
+  ['A4', 210, 297],
+  ['A3', 297, 420],
+];
+
+function LabPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSettings>) => void }) {
+  const [size, setSize] = useState('6 寸');
+
+  function genTestPage() {
+    const [, pw, ph] = TEST_SIZES.find((x) => x[0] === size) ?? TEST_SIZES[0];
+    const doc = new jsPDF({ unit: 'mm', format: [pw, ph] });
+    const M = 6; // 标注红框距纸边
+    // 四周红框：标注靠纸边的毫米数
+    doc.setDrawColor(226, 61, 61);
+    doc.setLineWidth(0.3);
+    doc.rect(M, M, pw - 2 * M, ph - 2 * M);
+    doc.setFontSize(7);
+    doc.setTextColor(226, 61, 61);
+    doc.text(`${M}mm`, pw / 2, M - 1.5, { align: 'center' });
+    doc.text(`${M}mm`, pw / 2, ph - M + 3, { align: 'center' });
+    doc.saveGraphicsState();
+    doc.text(`${M}mm`, M - 1.5, ph / 2, { align: 'center', angle: 90 });
+    doc.restoreGraphicsState?.();
+    // 中央标准证件卡轮廓 85.6 x 54
+    const cw = 85.6;
+    const ch = 54;
+    const cx = (pw - cw) / 2;
+    const cy = (ph - ch) / 2;
+    doc.setDrawColor(31, 35, 41);
+    doc.setLineWidth(0.25);
+    doc.rect(cx, cy, cw, ch);
+    doc.setFontSize(8);
+    doc.setTextColor(31, 35, 41);
+    doc.text('标准证件卡轮廓 85.6 x 54 mm', pw / 2, cy - 2, { align: 'center' });
+    doc.setFontSize(6.5);
+    doc.setTextColor(120, 126, 134);
+    const lines = [
+      `打印测试页 · ${size}（${pw} x ${ph} mm）`,
+      '放大说明页可被缩小了；四周红框标着靠纸边的毫米数，被切掉几圈就把「安全边距」设成最外侧完整可见的那个数字。',
+      s.shopName ? `${s.shopName}${s.shopPhone ? ' · ' + s.shopPhone : ''}` : '超誉工作台 clone',
+    ];
+    lines.forEach((t, i) => doc.text(t, pw / 2, ph - M + 5.5 + i * 3, { align: 'center' }));
+    doc.save('打印测试页.pdf');
+  }
+
+  return (
+    <div className="st-page">
+      <h1>实验功能</h1>
+      <p className="muted">按需开启试用功能，开关状态会保存到本机。</p>
+
+      <div className="st-sec">
+        <h3>添加宣传二维码与条码单号</h3>
+        <p className="muted">
+          开启后，证件照批量处理将显示「添加二维码」和「条码单号」，用于添加在排版版上添加宣传二维码和条形码。
+        </p>
+        <Toggle on={s.labQrBarcode} onchg={(v) => update({ labQrBarcode: v })} />
+      </div>
+
+      <div className="st-sec">
+        <h3>磨皮方式对比</h3>
+        <p className="muted">
+          开启后，证件照批量处理的「手动微调」底部显示「磨皮方式」，可在 AI 匀肤 + 平滑 / 仅 AI 匀肤 / 仅平滑之间切换，用于对比匀肤模式的效果。关闭时按默认的 AI 匀肤 + 平滑处理。
+        </p>
+        <Toggle on={s.labSkinCompare} onchg={(v) => update({ labSkinCompare: v })} />
+      </div>
+
+      <div className="st-sec">
+        <h3>拍摄质量检查</h3>
+        <p className="muted">
+          开启后，证件照批量处理会在每张照片上标出美颜修不了拍摄问题（露齿、闭眼、戴帽子、刘海遮眉、仰拍等）；缩略图角上另个标记，是停看全部说明，判定还在打着，误报偏多，关闭时完全检测。
+        </p>
+        <Toggle on={s.labShootCheck} onchg={(v) => update({ labShootCheck: v })} />
+      </div>
+
+      <div className="st-sec">
+        <h3>打印测试页</h3>
+        <p className="muted">
+          一次查打印尺寸为什么不对：中间是标准证件卡轮廓（85.6 x 54 mm），放张身份证上去比对—证件要说明页可被缩小了；四周红框标着靠纸边的毫米数，被切掉几圈就把「安全边距」设成最外侧完整可见的那个数字。
+        </p>
+        <div className="st-row">
+          <select value={size} onChange={(e) => setSize(e.target.value)}>
+            {TEST_SIZES.map(([n]) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <button className="btn primary" onClick={genTestPage}>
+            生成并保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===== 关于 ===== */
+function AboutPage() {
+  return (
+    <div className="st-page">
+      <h1>关于</h1>
+      <div className="st-card">
+        <p>
+          <b>超誉工作台 clone</b> · v0.4.0
+        </p>
+        <p className="muted">
+          对 aiyinbox.com 桌面端的学习性复刻：批量打印报价、证卡拼版、证件照批量处理、图片拼版、批量制卡、Office 转
+          PDF 与设置中心。与原版无从属关系。
+        </p>
+      </div>
+    </div>
+  );
+}
