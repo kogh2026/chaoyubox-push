@@ -19,3 +19,6 @@ Thumbs.db
 
 # 测试临时目录（vitest TEMP 重定向，规避 fs shim）
 .tmp/
+
+# E2E 截图输出
+tests/e2e/.out/

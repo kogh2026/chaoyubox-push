@@ -16,6 +16,7 @@ import {
   computeLayout,
   buildSheetImages,
   renderPreview,
+  type CanvasLike,
   type PaperSize,
   type PhotoPreset,
 } from '../lib/cardLayout';
@@ -85,7 +86,7 @@ export default function IdPhoto() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [dragOver, setDragOver] = useState(false);
-  const [sheets, setSheets] = useState<HTMLCanvasElement[]>([]);
+  const [sheets, setSheets] = useState<CanvasLike[]>([]);
   const [mattesVer, setMattesVer] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);

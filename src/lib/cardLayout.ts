@@ -88,9 +88,113 @@ export function coverSrcRect(
   return { sx: 0, sy: (natH - sh) / 2, sw: natW, sh };
 }
 
+export interface BuildOpts {
+  sources: HTMLImageElement[];
+  layout: LayoutResult;
+  itemW: number;
+  itemH: number;
+  mode: 'single' | 'multi';
+  dpi?: number;
+}
+
+/** 多图模式下每格用哪个源图索引（取模循环填充）；源图数为 0 时全 null（调用方遇到 null/空洞即停）。
+ *  从 buildSheetImages 的多图分支提取，纯函数，node 环境可直接测。 */
+export function assignSources(count: number, sourcesLen: number): (number | null)[] {
+  const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  if (n === 0) return [];
+  if (!Number.isFinite(sourcesLen) || sourcesLen <= 0) return new Array(n).fill(null);
+  const out: (number | null)[] = [];
+  for (let i = 0; i < n; i++) out.push(i % sourcesLen);
+  return out;
+}
+
+/* ===== 可测接缝：最小 canvas / 2d context 接口 =====
+   真实 HTMLCanvasElement 天然满足这两个结构类型，调用点无需改动；
+   测试传入桩对象即可在 node 环境断言绘制行为。 */
+
+/** 最小 2d context（桩友好；drawImage 宽松签名同时覆盖 5 参/9 参两种调用） */
+export interface Ctx2DLike {
+  fillStyle: string | CanvasGradient | CanvasPattern;
+  strokeStyle: string | CanvasGradient | CanvasPattern;
+  lineWidth: number;
+  setLineDash(segments: number[]): void;
+  fillRect(x: number, y: number, w: number, h: number): void;
+  strokeRect(x: number, y: number, w: number, h: number): void;
+  drawImage(
+    image: unknown,
+    sx: number,
+    sy: number,
+    sw?: number,
+    sh?: number,
+    dx?: number,
+    dy?: number,
+    dw?: number,
+    dh?: number,
+  ): void;
+}
+
+/** 最小 canvas */
+export interface CanvasLike {
+  width: number;
+  height: number;
+  getContext(id: '2d'): Ctx2DLike | null;
+}
+
+/** 单元格矩形（行主序，左上起） */
+export interface CellRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** 一张纸上所有单元格的矩形（纯函数）。
+ *  scale=1 时即毫米坐标（PDF 导出复用同一套坐标）；
+ *  非法行列 → 空数组。renderPreview / exportGridPdf / exportSheetPdf 共用。 */
+export function cellRects(o: {
+  cols: number;
+  rows: number;
+  itemW: number;
+  itemH: number;
+  margin: number;
+  gap: number;
+  scale: number;
+}): CellRect[] {
+  const cols = Number.isFinite(o.cols) ? Math.floor(o.cols) : 0;
+  const rows = Number.isFinite(o.rows) ? Math.floor(o.rows) : 0;
+  if (cols <= 0 || rows <= 0) return [];
+  const cellW = o.itemW * o.scale;
+  const cellH = o.itemH * o.scale;
+  const gapPx = o.gap * o.scale;
+  const startX = o.margin * o.scale;
+  const startY = o.margin * o.scale;
+  const out: CellRect[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      out.push({
+        x: startX + c * (cellW + gapPx),
+        y: startY + r * (cellH + gapPx),
+        w: cellW,
+        h: cellH,
+      });
+    }
+  }
+  return out;
+}
+
+/** canvas 工厂（默认 document.createElement；测试注入桩） */
+export type CanvasFactory = () => CanvasLike;
+
+const defaultCanvas: CanvasFactory = () => document.createElement('canvas');
+
 // 把源图以 cover 方式裁切填满目标像素尺寸的画布
-export function fitCover(img: HTMLImageElement, pxW: number, pxH: number): HTMLCanvasElement {
-  const c = document.createElement('canvas');
+export function fitCover(
+  img: HTMLImageElement,
+  pxW: number,
+  pxH: number,
+  createCanvas: CanvasFactory = defaultCanvas,
+): CanvasLike {
+  const c = createCanvas();
   c.width = Math.max(1, Math.round(pxW));
   c.height = Math.max(1, Math.round(pxH));
   const ctx = c.getContext('2d')!;
@@ -101,31 +205,24 @@ export function fitCover(img: HTMLImageElement, pxW: number, pxH: number): HTMLC
   return c;
 }
 
-export interface BuildOpts {
-  sources: HTMLImageElement[];
-  layout: LayoutResult;
-  itemW: number;
-  itemH: number;
-  mode: 'single' | 'multi';
-  dpi?: number;
-}
-
 // 生成一张纸上每个单元格的图像画布（300DPI 输出质量）
-export function buildSheetImages(opts: BuildOpts): HTMLCanvasElement[] {
+export function buildSheetImages(opts: BuildOpts, createCanvas: CanvasFactory = defaultCanvas): CanvasLike[] {
   const dpi = opts.dpi ?? 300;
   const pxW = (opts.itemW / 25.4) * dpi;
   const pxH = (opts.itemH / 25.4) * dpi;
-  const arr: HTMLCanvasElement[] = [];
+  const arr: CanvasLike[] = [];
   if (opts.mode === 'single') {
     const src = opts.sources[0];
     if (!src) return arr;
-    const c = fitCover(src, pxW, pxH);
+    const c = fitCover(src, pxW, pxH, createCanvas);
     for (let i = 0; i < opts.layout.perSheet; i++) arr.push(c); // 复用同一画布
   } else {
-    for (let i = 0; i < opts.layout.perSheet; i++) {
-      const src = opts.sources[i % opts.sources.length];
+    const assign = assignSources(opts.layout.perSheet, opts.sources.length);
+    for (let i = 0; i < assign.length; i++) {
+      const si = assign[i];
+      const src = si === null ? undefined : opts.sources[si];
       if (!src) break;
-      arr.push(fitCover(src, pxW, pxH));
+      arr.push(fitCover(src, pxW, pxH, createCanvas));
     }
   }
   return arr;
@@ -139,42 +236,35 @@ export interface PreviewOpts {
   margin: number;
   gap: number;
   cutLines: boolean;
-  sheets: HTMLCanvasElement[];
+  sheets: CanvasLike[];
   scale: number; // 预览像素/毫米
 }
 
 // 在给定 canvas 上绘制整张排版预览
-export function renderPreview(canvas: HTMLCanvasElement, o: PreviewOpts): void {
+export function renderPreview(canvas: CanvasLike, o: PreviewOpts): void {
   canvas.width = Math.round(o.paper.w * o.scale);
   canvas.height = Math.round(o.paper.h * o.scale);
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const cellW = o.itemW * o.scale;
-  const cellH = o.itemH * o.scale;
-  const gapPx = o.gap * o.scale;
-  const totalW = o.layout.cols * cellW + (o.layout.cols - 1) * gapPx;
-  const totalH = o.layout.rows * cellH + (o.layout.rows - 1) * gapPx;
-  const startX = o.margin * o.scale;
-  const startY = o.margin * o.scale;
-  void totalW;
-  void totalH; // 居中由 margin 决定，这里仅占位
-
-  let idx = 0;
-  for (let r = 0; r < o.layout.rows; r++) {
-    for (let c = 0; c < o.layout.cols; c++) {
-      const x = startX + c * (cellW + gapPx);
-      const y = startY + r * (cellH + gapPx);
-      if (o.cutLines) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-        ctx.setLineDash([4, 3]);
-        ctx.lineWidth = 0.6;
-        ctx.strokeRect(x, y, cellW, cellH);
-        ctx.setLineDash([]);
-      }
-      const img = o.sheets[idx++];
-      if (img) ctx.drawImage(img, x, y, cellW, cellH);
+  cellRects({
+    cols: o.layout.cols,
+    rows: o.layout.rows,
+    itemW: o.itemW,
+    itemH: o.itemH,
+    margin: o.margin,
+    gap: o.gap,
+    scale: o.scale,
+  }).forEach((rc, idx) => {
+    if (o.cutLines) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 0.6;
+      ctx.strokeRect(rc.x, rc.y, rc.w, rc.h);
+      ctx.setLineDash([]);
     }
-  }
+    const img = o.sheets[idx];
+    if (img) ctx.drawImage(img, rc.x, rc.y, rc.w, rc.h);
+  });
 }

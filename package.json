@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "python tests/e2e/run_all.py",
     "electron": "electron .",
     "electron:dev": "CHAOYU_DEV=1 electron .",
     "pack": "npm run build && electron-builder"

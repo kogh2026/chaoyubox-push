@@ -20,5 +20,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // 单线程：多 worker 并发写同一 SSR 缓存文件会被 fs shim 拦（EPERM），
+    // 且失败时会静默少收测试文件（假绿）。155 个用例顺序跑也只 1-2 秒。
+    pool: 'threads',
+    poolOptions: {
+      threads: { singleThread: true },
+    },
   },
 });
