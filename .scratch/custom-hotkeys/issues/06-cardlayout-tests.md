@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-24)
 
 - [ ] 典型值：A4 排 1 寸照片的行列与每纸张数
 - [ ] gap=0 与 gap 很大的对比

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-24)
 
 - [ ] 七个动作的默认键位集中定义（search/import/print/export/zoomIn/zoomOut/zoomReset）
 - [ ] normalizeCombo 覆盖字母/数字/特殊键（equal、minus）、修饰符固定顺序、大小写无关
