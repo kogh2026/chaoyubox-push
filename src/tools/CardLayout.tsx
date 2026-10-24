@@ -15,6 +15,7 @@ import {
 } from '../lib/idCardLayout';
 import { exportPagesPdf } from '../lib/sheetPdf';
 import { detectCardQuad, FULL_QUAD, type Quad } from '../lib/cardDetect';
+import { useHotkeyActions } from '../lib/hotkeys';
 import ManualCropModal from './ManualCropModal';
 
 interface CardItem {
@@ -131,16 +132,12 @@ export default function CardLayout() {
     }));
   }, [pages, cur, checked]);
 
-  // 快捷键订阅：App 派发 chaoyu-hotkey，本工具响应导入/导出
-  useEffect(() => {
-    const onHotkey = (e: Event) => {
-      const action = (e as CustomEvent<{ action: string }>).detail?.action;
-      if (action === 'import') inputRef.current?.click();
-      else if (action === 'export') doExportPdf();
-    };
-    window.addEventListener('chaoyu-hotkey', onHotkey);
-    return () => window.removeEventListener('chaoyu-hotkey', onHotkey);
-  }, [pages]);
+  // 快捷键接入：导入/打印/导出（能力自动登记供设置页展示）
+  useHotkeyActions('id-card', '证卡拼版助手', {
+    import: () => inputRef.current?.click(),
+    print: doPrint,
+    export: doExportPdf,
+  });
 
   // 重绘预览
   useEffect(() => {

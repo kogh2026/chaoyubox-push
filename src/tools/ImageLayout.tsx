@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useHotkeyActions } from '../lib/hotkeys';
 import { PAPER_SIZES, type PaperSize } from '../lib/cardLayout';
 import { exportGridPdf, renderGridPage } from '../lib/gridExport';
 
@@ -230,6 +231,13 @@ export default function ImageLayout() {
     if (api?.print) api.print({ grayscale: true, copies: 1 });
     else window.print();
   }
+
+  // 快捷键接入：导入/打印/导出（能力自动登记供设置页展示）
+  useHotkeyActions('image-layout', '图片拼版', {
+    import: () => inputRef.current?.click(),
+    print: doPrint,
+    export: exportPdf,
+  });
 
   return (
     <div className="image-layout">

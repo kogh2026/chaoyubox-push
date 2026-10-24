@@ -364,6 +364,12 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .st-conflict { display: block; font-size: 11.5px; color: #d64545; margin-top: 2px; }
 .st-keys-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .st-keys-foot .muted { font-size: 12px; }
+.st-caps-line { margin: 0; font-size: 12.5px; line-height: 2; }
+.st-caps-tool { color: var(--text); }
+.st-caps-item { display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; }
+.st-caps-item kbd { padding: 1px 6px; font-size: 11.5px; }
+.st-caps-ok { color: #2e9e5b; font-weight: 700; }
+[data-theme='dark'] .st-caps-ok { color: #4cc184; }
 kbd { font-family: inherit; background: #f1f3f5; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
 
 /* ===== 深色主题 ===== */

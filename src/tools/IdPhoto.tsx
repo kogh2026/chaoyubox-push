@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useHotkeyActions } from '../lib/hotkeys';
 import {
   BG_OPTIONS,
   matte,
@@ -315,6 +316,13 @@ export default function IdPhoto() {
     if (api?.print) api.print({ grayscale: false, copies: 1 });
     else window.print();
   }
+
+  // 快捷键接入：导入/打印/导出（能力自动登记供设置页展示）
+  useHotkeyActions('id-photo', '证件照批量处理', {
+    import: () => inputRef.current?.click(),
+    print: doPrint,
+    export: exportAll,
+  });
 
   const allChecked = checked.size === files.length && files.length > 0;
 

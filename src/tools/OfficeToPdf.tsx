@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useHotkeyActions } from '../lib/hotkeys';
 
 interface ElectronAPI {
   isElectron?: boolean;
@@ -31,6 +32,10 @@ export default function OfficeToPdf() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useHotkeyActions('office-to-pdf', 'Office 转 PDF', {
+    import: () => inputRef.current?.click(),
+  });
 
   useEffect(() => {
     if (!isElectron || !api?.checkOffice) {

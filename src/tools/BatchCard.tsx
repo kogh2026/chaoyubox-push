@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useHotkeyActions } from '../lib/hotkeys';
 import * as XLSX from 'xlsx';
 import { PAPER_SIZES, computeLayout, type PaperSize } from '../lib/cardLayout';
 import { exportGridPdf, renderGridPage } from '../lib/gridExport';
@@ -37,6 +38,7 @@ export default function BatchCard() {
   const [gap, setGap] = useState(2);
   const [cutLines, setCutLines] = useState(true);
   const avatarRef = useRef<HTMLInputElement>(null);
+  const xlsxRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const thumbRefs = useRef<(HTMLCanvasElement | null)[]>([]);
 
@@ -207,6 +209,13 @@ export default function BatchCard() {
     else window.print();
   }
 
+  // 快捷键接入：导入/打印/导出（能力自动登记供设置页展示）
+  useHotkeyActions('batch-card', '批量制卡', {
+    import: () => xlsxRef.current?.click(),
+    print: doPrint,
+    export: exportPdf,
+  });
+
   return (
     <div className="batch-card">
       <header className="tool-head">
@@ -317,6 +326,7 @@ export default function BatchCard() {
           <label className="btn" style={{ cursor: 'pointer' }}>
             导入 Excel
             <input
+              ref={xlsxRef}
               type="file"
               accept=".xlsx,.xls"
               style={{ display: 'none' }}

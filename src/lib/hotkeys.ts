@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /* ===== 可自定义全局快捷键（纯逻辑 + 持久化） =====
    组合串格式：修饰符固定顺序 ctrl+meta+shift+alt + 主键（小写），如 ctrl+shift+k。
@@ -161,4 +161,79 @@ export function isTypingTarget(t: EventTarget | null): boolean {
   if (!el || !el.tagName) return false;
   const tag = el.tagName.toLowerCase();
   return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
+}
+
+/* ===== 工具快捷键接入：Hook + 能力登记 =====
+   工具调 useHotkeyActions 一行接入：自动监听 chaoyu-hotkey、自动清理；
+   同时把本工具支持的动组登记下来（跨会话保留），设置页据此显示
+   「最近使用的工具支持哪些快捷键」，避免用户按了没反应还不知道为什么。 */
+
+export type HotkeyHandlers = Partial<Record<HotkeyAction, () => void>>;
+
+export interface ToolCaps {
+  toolId: string;
+  toolName: string;
+  actions: HotkeyAction[];
+  at: number;
+}
+
+const CAPS_KEY = 'chaoyu.hotkeys.toolcaps.v1';
+const CAPS_CHANGED = 'chaoyu-toolcaps-changed';
+
+export function loadToolCaps(): ToolCaps | null {
+  try {
+    const raw = localStorage.getItem(CAPS_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as ToolCaps;
+    return v && typeof v.toolId === 'string' && Array.isArray(v.actions) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 工具侧接入点：登记能力 + 订阅派发。handlers 每次渲染取最新，清理随卸载自动完成。 */
+export function useHotkeyActions(toolId: string, toolName: string, handlers: HotkeyHandlers): void {
+  const hRef = useRef(handlers);
+  useEffect(() => {
+    hRef.current = handlers;
+  });
+  useEffect(() => {
+    const onHotkey = (e: Event) => {
+      const action = (e as CustomEvent<{ action: HotkeyAction }>).detail?.action;
+      if (!action) return;
+      const h = hRef.current[action];
+      if (h) h();
+    };
+    window.addEventListener('chaoyu-hotkey', onHotkey);
+    const caps: ToolCaps = {
+      toolId,
+      toolName,
+      actions: Object.keys(handlers) as HotkeyAction[],
+      at: Date.now(),
+    };
+    try {
+      localStorage.setItem(CAPS_KEY, JSON.stringify(caps));
+    } catch {
+      /* 隐私模式写入失败时静默 */
+    }
+    window.dispatchEvent(new CustomEvent(CAPS_CHANGED, { detail: caps }));
+    return () => window.removeEventListener('chaoyu-hotkey', onHotkey);
+    // toolId/toolName 不变；handlers 经 ref 读最新，不入依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolId, toolName]);
+}
+
+/** 设置页用：最近使用工具的能力（跨会话保留，无则 null） */
+export function useToolCaps(): ToolCaps | null {
+  const [caps, setCaps] = useState<ToolCaps | null>(() => loadToolCaps());
+  useEffect(() => {
+    const onChange = (e: Event) => setCaps((e as CustomEvent<ToolCaps>).detail ?? loadToolCaps());
+    window.addEventListener(CAPS_CHANGED, onChange);
+    window.addEventListener('storage', onChange);
+    return () => {
+      window.removeEventListener(CAPS_CHANGED, onChange);
+      window.removeEventListener('storage', onChange);
+    };
+  }, []);
+  return caps;
 }

@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import { analyzeFile, type ColorMode, type FileAnalysis } from '../lib/pdfAnalyze';
 import { quote, sheetCount, formatCents, type FileRow, type PageMode, type Quote } from '../lib/quote';
 import { useSettings, priceRowOf, presetFromPriceRow, detectFromName, reclassify } from '../lib/appSettings';
 import { RED_STAMP_THRESHOLD } from '../lib/pdfAnalyze';
+import { useHotkeyActions } from '../lib/hotkeys';
 
 /* ===== 打印记录（localStorage） ===== */
 interface PrintRecord {
@@ -132,17 +133,14 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
   const q = useMemo(() => quote(effectiveRows, presetFor), [effectiveRows, s]);
   const sheets = useMemo(() => sheetCount(effectiveRows), [effectiveRows]);
 
-  // 快捷键订阅：App 派发 chaoyu-hotkey，本工具响应导入/打印/导出
-  useEffect(() => {
-    const onHotkey = (e: Event) => {
-      const action = (e as CustomEvent<{ action: string }>).detail?.action;
-      if (action === 'import') inputRef.current?.click();
-      else if (action === 'print') doPrint();
-      else if (action === 'export' && q) exportQuotePdf(q);
-    };
-    window.addEventListener('chaoyu-hotkey', onHotkey);
-    return () => window.removeEventListener('chaoyu-hotkey', onHotkey);
-  }, [q]);
+  // 快捷键接入：导入/打印/导出（能力自动登记供设置页展示）
+  useHotkeyActions('batch-print', '批量打印', {
+    import: () => inputRef.current?.click(),
+    print: doPrint,
+    export: () => {
+      if (q) exportQuotePdf(q);
+    },
+  });
 
   const autoSplit = useMemo(() => {
     let bw = 0;

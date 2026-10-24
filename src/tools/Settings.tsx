@@ -9,6 +9,7 @@ import {
   normalizeCombo,
   resolveBindings,
   useHotkeys,
+  useToolCaps,
   type HotkeyAction,
 } from '../lib/hotkeys';
 
@@ -536,6 +537,7 @@ function PrintPresetPage({ s, update }: { s: AppSettings; update: (p: Partial<Ap
 /* ===== 快捷键（可自定义：录制 / 冲突检测 / 恢复默认） ===== */
 function ShortcutPage() {
   const [bindings, setBindings] = useHotkeys();
+  const caps = useToolCaps();
   const [recording, setRecording] = useState<HotkeyAction | null>(null);
   const [conflictWith, setConflictWith] = useState<HotkeyAction | null>(null);
 
@@ -634,6 +636,26 @@ function ShortcutPage() {
           </button>
           <span className="muted">修改后立即生效，重启软件后仍保留。</span>
         </div>
+      </div>
+      <div className="st-card">
+        <h3>当前工具支持情况</h3>
+        {caps && caps.actions.length > 0 ? (
+          <p className="muted st-caps-line">
+            最近使用：<b className="st-caps-tool">{caps.toolName}</b>
+            {caps.actions.map((a) => (
+              <span key={a} className="st-caps-item">
+                {nameOf(a)}
+                <kbd>{comboLabel(bindings[a])}</kbd>
+                <span className="st-caps-ok">✓</span>
+              </span>
+            ))}
+          </p>
+        ) : (
+          <p className="muted st-caps-line">
+            还没有工具登记快捷键能力。打开任一工具（批量打印、证卡拼版、证件照、图片拼版、批量制卡、Office
+            转 PDF）后，这里会显示它支持的快捷键和当前键位。
+          </p>
+        )}
       </div>
     </div>
   );
