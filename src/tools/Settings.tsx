@@ -1,6 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import { useSettings, type PriceRow, type PrinterPreset, type AppSettings } from '../lib/appSettings';
+import {
+  DEFAULT_BINDINGS,
+  HOTKEY_ACTIONS,
+  comboLabel,
+  findConflict,
+  normalizeCombo,
+  resolveBindings,
+  useHotkeys,
+  type HotkeyAction,
+} from '../lib/hotkeys';
 
 type Tab =
   | 'account'
@@ -523,33 +533,107 @@ function PrintPresetPage({ s, update }: { s: AppSettings; update: (p: Partial<Ap
   );
 }
 
-/* ===== 快捷键 ===== */
+/* ===== 快捷键（可自定义：录制 / 冲突检测 / 恢复默认） ===== */
 function ShortcutPage() {
-  const KEYS: [string, string][] = [
-    ['Ctrl K', '搜索工具'],
-    ['Ctrl O', '导入文件（当前工具）'],
-    ['Ctrl P', '打印（当前工具）'],
-    ['Ctrl S', '导出 / 保存 PDF（当前工具）'],
-    ['Ctrl 加号 / 减号', '界面缩放'],
-    ['Ctrl 0', '界面缩放恢复 100%'],
-    ['Delete', '移除选中项（列表内）'],
-  ];
+  const [bindings, setBindings] = useHotkeys();
+  const [recording, setRecording] = useState<HotkeyAction | null>(null);
+  const [conflictWith, setConflictWith] = useState<HotkeyAction | null>(null);
+
+  const nameOf = (a: HotkeyAction) => HOTKEY_ACTIONS.find((x) => x.id === a)?.name ?? a;
+
+  // 录制态：capture 阶段抓组合，优先于 App 的派发监听
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        setRecording(null);
+        setConflictWith(null);
+        return;
+      }
+      const combo = normalizeCombo(e);
+      if (!combo) return; // 纯修饰键：保持捕获态
+      const clash = findConflict(bindings, recording, combo);
+      if (clash) {
+        setConflictWith(clash); // 冲突：不落库，行内提示
+        return;
+      }
+      setBindings({ ...bindings, [recording]: combo });
+      setRecording(null);
+      setConflictWith(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [recording, bindings, setBindings]);
+
   return (
     <div className="st-page">
       <h1>快捷键</h1>
       <div className="st-card">
+        <p className="muted st-hint">
+          点「录制」后直接按新组合即可改键；Esc 取消。带 <span className="st-scope-tag">工具</span> 的动作在对应工具页面内生效。
+        </p>
         <table className="st-keys">
+          <thead>
+            <tr>
+              <th>动作</th>
+              <th style={{ width: 130 }}>当前键位</th>
+              <th style={{ width: 170 }}>操作</th>
+            </tr>
+          </thead>
           <tbody>
-            {KEYS.map(([k, d]) => (
-              <tr key={k}>
-                <td>
-                  <kbd>{k}</kbd>
-                </td>
-                <td className="muted">{d}</td>
-              </tr>
-            ))}
+            {HOTKEY_ACTIONS.map((a) => {
+              const isRec = recording === a.id;
+              const isDefault = bindings[a.id] === DEFAULT_BINDINGS[a.id];
+              return (
+                <tr key={a.id} className={isRec ? 'rec' : ''}>
+                  <td>
+                    {a.name}
+                    {a.scope === 'tool' && <span className="st-scope-tag">工具</span>}
+                  </td>
+                  <td>
+                    {isRec ? (
+                      <span className="st-rec-hint">按下新组合…（Esc 取消）</span>
+                    ) : (
+                      <kbd>{comboLabel(bindings[a.id])}</kbd>
+                    )}
+                    {isRec && conflictWith && (
+                      <span className="st-conflict">与「{nameOf(conflictWith)}」冲突，请换一个</span>
+                    )}
+                  </td>
+                  <td>
+                    {isRec ? (
+                      <button className="btn" onClick={() => setRecording(null)}>
+                        取消
+                      </button>
+                    ) : (
+                      <>
+                        <button className="btn" onClick={() => { setRecording(a.id); setConflictWith(null); }}>
+                          录制
+                        </button>
+                        <button
+                          className="btn"
+                          disabled={isDefault}
+                          title="恢复为该动作的默认键位"
+                          onClick={() => setBindings({ ...bindings, [a.id]: DEFAULT_BINDINGS[a.id] })}
+                        >
+                          恢复默认
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        <div className="st-keys-foot">
+          <button className="btn" onClick={() => setBindings(resolveBindings(null))}>
+            全部恢复默认
+          </button>
+          <span className="muted">修改后立即生效，重启软件后仍保留。</span>
+        </div>
       </div>
     </div>
   );

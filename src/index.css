@@ -355,6 +355,15 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 /* 快捷键 */
 .st-keys { width: 100%; border-collapse: collapse; font-size: 13px; }
 .st-keys td { padding: 8px 6px; border-bottom: 1px solid var(--line); }
+.st-keys th { text-align: left; padding: 6px; font-size: 12px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line); }
+.st-keys tr.rec td { background: #fff8e6; }
+[data-theme='dark'] .st-keys tr.rec td { background: #3a3320; }
+.st-hint { margin: 0 0 10px; font-size: 12px; line-height: 1.6; }
+.st-scope-tag { margin-left: 6px; font-size: 10px; color: var(--brand); background: #eef3fe; border-radius: 4px; padding: 1px 5px; }
+.st-rec-hint { font-size: 12px; color: #b26a00; }
+.st-conflict { display: block; font-size: 11.5px; color: #d64545; margin-top: 2px; }
+.st-keys-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.st-keys-foot .muted { font-size: 12px; }
 kbd { font-family: inherit; background: #f1f3f5; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
 
 /* ===== 深色主题 ===== */

@@ -7,6 +7,14 @@ import ImageLayout from './tools/ImageLayout';
 import BatchCard from './tools/BatchCard';
 import Settings from './tools/Settings';
 import { useSettings } from './lib/appSettings';
+import {
+  HOTKEY_ACTIONS,
+  isTypingTarget,
+  loadBindings,
+  matchCombo,
+  stepZoom,
+  type HotkeyAction,
+} from './lib/hotkeys';
 
 type Cat = 'id' | 'card' | 'print';
 
@@ -75,18 +83,37 @@ export default function App() {
     document.documentElement.style.zoom = String(s.zoom / 100);
   }, [s.zoom]);
 
+  // 全局快捷键派发：按绑定表匹配；app 级动作直接执行，工具级动作派发事件
+  const runAppAction = (action: HotkeyAction) => {
+    if (action === 'search') {
+      setRoute({ page: 'home' });
+      setTimeout(() => document.getElementById('app-search')?.focus(), 0);
+    } else if (action === 'zoomIn') {
+      update({ zoom: stepZoom(s.zoom, 1) });
+    } else if (action === 'zoomOut') {
+      update({ zoom: stepZoom(s.zoom, -1) });
+    } else if (action === 'zoomReset') {
+      update({ zoom: 100 });
+    }
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setRoute({ page: 'home' });
-        setTimeout(() => document.getElementById('app-search')?.focus(), 0);
+      if (isTypingTarget(e.target)) return; // 打字时不触发
+      const bindings = loadBindings(); // 每次读最新（设置页可能刚改）
+      for (const a of HOTKEY_ACTIONS) {
+        const combo = bindings[a.id];
+        if (combo && matchCombo(e, combo)) {
+          e.preventDefault();
+          if (a.scope === 'app') runAppAction(a.id);
+          else window.dispatchEvent(new CustomEvent('chaoyu-hotkey', { detail: { action: a.id } }));
+          return;
+        }
       }
-      if (e.ctrlKey && e.key === '0') update({ zoom: 100 });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [update]);
+  }, [s.zoom, update]);
 
   // 搜索：名称 / 描述 / 拼音首字母
   const filtered = useMemo(() => {

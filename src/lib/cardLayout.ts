@@ -49,11 +49,43 @@ export function computeLayout(
   margin: number,
   gap: number,
 ): LayoutResult {
-  const usableW = paperW - 2 * margin;
-  const usableH = paperH - 2 * margin;
-  const cols = Math.max(1, Math.floor((usableW + gap) / (itemW + gap)));
-  const rows = Math.max(1, Math.floor((usableH + gap) / (itemH + gap)));
+  // 异常输入防护：非法项尺寸 → 单张降级；非法 gap → 0；非法纸/边距 → 0 化后由 max(1,…) 兜底
+  if (!Number.isFinite(itemW) || !Number.isFinite(itemH) || itemW <= 0 || itemH <= 0) {
+    return { cols: 1, rows: 1, perSheet: 1 };
+  }
+  const g = Number.isFinite(gap) && gap > 0 ? gap : 0;
+  const m = Number.isFinite(margin) ? margin : 0;
+  const pw = Number.isFinite(paperW) ? paperW : 0;
+  const ph = Number.isFinite(paperH) ? paperH : 0;
+  const usableW = pw - 2 * m;
+  const usableH = ph - 2 * m;
+  const cols = Math.max(1, Math.floor((usableW + g) / (itemW + g)));
+  const rows = Math.max(1, Math.floor((usableH + g) / (itemH + g)));
   return { cols, rows, perSheet: cols * rows };
+}
+
+/** cover 裁切的源矩形计算（纯函数）：把 natW×natH 的图裁成与 pxW×pxH 同比例的最大居中矩形。
+ *  宽原图（sr>tr）→ 裁左右；高原图 → 裁上下；非法尺寸 → 空矩形（drawImage 空操作）。 */
+export function coverSrcRect(
+  natW: number,
+  natH: number,
+  pxW: number,
+  pxH: number,
+): { sx: number; sy: number; sw: number; sh: number } {
+  if (!Number.isFinite(natW) || !Number.isFinite(natH) || natW <= 0 || natH <= 0) {
+    return { sx: 0, sy: 0, sw: 0, sh: 0 };
+  }
+  if (!Number.isFinite(pxW) || !Number.isFinite(pxH) || pxW <= 0 || pxH <= 0) {
+    return { sx: 0, sy: 0, sw: 0, sh: 0 };
+  }
+  const sr = natW / natH;
+  const tr = pxW / pxH;
+  if (sr > tr) {
+    const sw = natH * tr;
+    return { sx: (natW - sw) / 2, sy: 0, sw, sh: natH };
+  }
+  const sh = natW / tr;
+  return { sx: 0, sy: (natH - sh) / 2, sw: natW, sh };
 }
 
 // 把源图以 cover 方式裁切填满目标像素尺寸的画布
@@ -64,19 +96,7 @@ export function fitCover(img: HTMLImageElement, pxW: number, pxH: number): HTMLC
   const ctx = c.getContext('2d')!;
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, c.width, c.height);
-  const sr = img.naturalWidth / img.naturalHeight;
-  const tr = pxW / pxH;
-  let sx = 0,
-    sy = 0,
-    sw = img.naturalWidth,
-    sh = img.naturalHeight;
-  if (sr > tr) {
-    sw = sh * tr;
-    sx = (img.naturalWidth - sw) / 2;
-  } else {
-    sh = sw / tr;
-    sy = (img.naturalHeight - sh) / 2;
-  }
+  const { sx, sy, sw, sh } = coverSrcRect(img.naturalWidth, img.naturalHeight, pxW, pxH);
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
   return c;
 }

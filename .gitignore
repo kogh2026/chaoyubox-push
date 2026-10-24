@@ -16,3 +16,6 @@ Thumbs.db
 # 编辑器
 .vscode/
 .idea/
+
+# 测试临时目录（vitest TEMP 重定向，规避 fs shim）
+.tmp/
