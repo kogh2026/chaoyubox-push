@@ -19,7 +19,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # tests/e2e → repo root
 PORT = 4173
-SCRIPTS = ["test_hotkeys.py", "test_drop.py", "test_detect.py"]
+SCRIPTS = ["test_hotkeys.py", "test_drop.py", "test_detect.py", "test_iframe_integration.py"]
 
 
 def wait_port(port: int, timeout: float = 30.0) -> bool:

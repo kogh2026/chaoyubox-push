@@ -775,6 +775,18 @@ function AboutPage() {
           PDF 与设置中心。与原版无从属关系。
         </p>
       </div>
+      <div className="st-card">
+        <h3>开源许可</h3>
+        <p className="muted">
+          「PDF 工具箱」为第三方开源项目的离线集成，全部处理在本机完成、无网络请求：
+        </p>
+        <p className="st-caps-line">
+          · 离线 PDF 工具箱（信创 PDF 工具箱 XCPDF）V7.1 — <b>MIT License</b> © wallechfox
+          <br />· 其内部依赖：pdf.js（Apache-2.0）、@cantoo/pdf-lib（MIT）、JSZip（MIT/GPL 双许可，取
+          MIT）、Twemoji 图形（CC-BY 4.0）
+        </p>
+        <p className="muted">项目地址：github.com/wallechfox/offline-pdf-tools</p>
+      </div>
     </div>
   );
 }

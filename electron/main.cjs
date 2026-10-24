@@ -1,5 +1,5 @@
 // Electron 主进程：把 Web 原型包成桌面应用，并桥接"真打印" + "Office 转 PDF"
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -94,6 +94,33 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // 内嵌 PDF 工具箱（iframe）的下载：弹「另存为」让用户选位置。
+  // 只拦来自 pdf-toolbox iframe 的下载（webContents URL 含 pdf-toolbox），
+  // 主应用自己的导出（a.download）保持默认行为，直接存系统下载目录。
+  win.webContents.session.on('will-download', (event, item, wc) => {
+    let from = '';
+    try {
+      from = wc && wc.getURL ? wc.getURL() : '';
+    } catch {
+      /* frame 已分离时 getURL 抛错，按非工具箱下载放行 */
+    }
+    if (!from.includes('pdf-toolbox')) return;
+    event.preventDefault();
+    dialog
+      .showSaveDialog(win, {
+        title: '保存文件',
+        defaultPath: path.join(app.getPath('downloads'), item.getFilename()),
+      })
+      .then(({ canceled, filePath }) => {
+        if (canceled || !filePath) {
+          item.cancel();
+          return;
+        }
+        item.setSavePath(filePath);
+      })
+      .catch(() => item.cancel());
   });
 }
 

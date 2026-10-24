@@ -11,7 +11,7 @@ npm run test:e2e
 ```
 
 runner 会自动：检查 `dist/` → 起 `vite preview`（端口 4173，已被占用则复用）→
-依次跑下面三个脚本 → 汇总 PASS/FAIL → 关闭自己拉起的服务。
+依次跑下面各脚本 → 汇总 PASS/FAIL → 关闭自己拉起的服务。
 
 ## 用例
 
@@ -20,6 +20,7 @@ runner 会自动：检查 `dist/` → 起 `vite preview`（端口 4173，已被�
 | `test_hotkeys.py` | 快捷键全链路：默认键位触发、录制改键生效/旧键失效、冲突拒绝、Esc 取消、刷新持久化、恢复默认、设置页「当前工具支持情况」在场感 |
 | `test_drop.py` | 批量打印拖放导入：扩展名兜底、多文件、toast 提示、文件行显示 |
 | `test_detect.py` | 证卡拼版：证件边缘检测 + 手动角点校正冒烟 |
+| `test_iframe_integration.py` | PDF 工具箱集成：首页卡片、iframe 内 40 工具渲染、iframe 内真实合并下载、搜索可达、零 console 错误 |
 
 ## 约定
 

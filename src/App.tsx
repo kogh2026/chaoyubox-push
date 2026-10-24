@@ -5,6 +5,7 @@ import IdPhoto from './tools/IdPhoto';
 import OfficeToPdf from './tools/OfficeToPdf';
 import ImageLayout from './tools/ImageLayout';
 import BatchCard from './tools/BatchCard';
+import PdfToolbox from './tools/PdfToolbox';
 import Settings from './tools/Settings';
 import { useSettings } from './lib/appSettings';
 import {
@@ -39,6 +40,7 @@ const TOOLS: Tool[] = [
   { id: 'image-layout', name: '图片拼版', desc: '多图网格拼版 / 拼接长图，打印不浪费纸', ready: true, cat: 'card', icon: '🧩', tags: ['网格拼版'], py: 'tppz' },
   { id: 'batch-card', name: '批量制卡', desc: 'Excel 名单套打席卡、工作证、参会证', ready: true, cat: 'card', icon: '🗂', tags: ['名单套打'], py: 'plzk' },
   { id: 'office-to-pdf', name: 'Office 转 PDF', desc: 'Word / Excel / PPT 转 PDF（桌面版，需 LibreOffice）', ready: true, cat: 'print', icon: '📄', tags: ['格式转换'], py: 'officepdf' },
+  { id: 'pdf-toolbox', name: 'PDF 工具箱', desc: '离线 PDF 全能处理：合并、拆分、转图片、加密、水印、压缩等 40 项功能', ready: true, cat: 'print', icon: '📔', tags: ['离线', '40 项'], py: 'pdfgjx' },
   { id: 'file-transfer', name: '文件互传', desc: '手机扫码传文件到电脑（局域网直传）', ready: false, cat: 'print', icon: '📲', tags: ['扫码传输'], py: 'wjhc' },
 ];
 
@@ -336,6 +338,7 @@ export default function App() {
         {route.page === 'tool' && route.id === 'office-to-pdf' && <OfficeToPdf />}
         {route.page === 'tool' && route.id === 'image-layout' && <ImageLayout />}
         {route.page === 'tool' && route.id === 'batch-card' && <BatchCard />}
+        {route.page === 'tool' && route.id === 'pdf-toolbox' && <PdfToolbox />}
         {route.page === 'settings' && <Settings initialTab={route.tab as never} />}
       </main>
     </div>
