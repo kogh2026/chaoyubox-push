@@ -1,11 +1,13 @@
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect, Fragment } from 'react';
 import { jsPDF } from 'jspdf';
 import { analyzeFile, type ColorMode, type FileAnalysis } from '../lib/pdfAnalyze';
-import { quote, sheetCount, formatCents, type FileRow, type PageMode, type Quote } from '../lib/quote';
-import { useSettings, priceRowOf, presetFromPriceRow, detectFromName, reclassify } from '../lib/appSettings';
+import { quote, quoteDetail, sheetCount, formatCents, type FileRow, type PageMode, type Quote, type QuoteDetailRow, type Preset } from '../lib/quote';
+import { useSettings, priceRowOf, presetFromPriceRow, detectFromName, reclassify, defaultPrices } from '../lib/appSettings';
 import { RED_STAMP_THRESHOLD } from '../lib/pdfAnalyze';
 import { useHotkeyActions } from '../lib/hotkeys';
 import { HANDOFF_BATCH_PRINT, handoffToFileList } from '../lib/handoff';
+import { presetPrintOpts, printPdfBytes } from '../lib/printers';
+import { buildPrintPlan, imageFileToPdfBytes } from '../lib/printJobs';
 
 /* ===== 打印记录（localStorage） ===== */
 interface PrintRecord {
@@ -13,6 +15,7 @@ interface PrintRecord {
   files: number;
   faces: number;
   totalCents: number;
+  detail?: QuoteDetailRow[]; // 报价明细分项快照（旧记录可能没有此字段）
 }
 const REC_KEY = 'chaoyu.print.records.v1';
 function loadRecords(): PrintRecord[] {
@@ -39,13 +42,42 @@ function cycleMode(cur: PageMode, manual: boolean | undefined): PageMode {
   return cur === 'bw' ? 'dot' : cur === 'dot' ? 'color' : cur === 'color' ? 'none' : 'bw';
 }
 
-function exportQuotePdf(q: Quote) {
+function exportQuotePdf(q: Quote, detail: QuoteDetailRow[], paperSummary: string) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   doc.setFontSize(16);
   doc.text('打印报价单', 14, 16);
   doc.setFontSize(10);
   doc.text(`日期：${new Date().toLocaleString()}`, 14, 24);
   let y = 36;
+
+  /* 分项明细：与界面「报价明细」面板同源（quoteDetail 聚合），保证 PDF 与 UI 数字一致 */
+  doc.setFontSize(12);
+  doc.text('报价明细', 14, y);
+  y += 8;
+  doc.setFontSize(10);
+  detail.forEach((d) => {
+    doc.text(d.label, 14, y);
+    doc.text(`${d.faces}面 × ${formatCents(d.unitCents)}`, 90, y);
+    doc.text(formatCents(d.subtotalCents), 184, y, { align: 'right' });
+    y += 6;
+    if (y > 250) {
+      doc.addPage();
+      y = 20;
+    }
+  });
+  doc.line(14, y, 196, y);
+  y += 8;
+  doc.setFontSize(13);
+  doc.text(`合计：${formatCents(q.totalCents)}（${q.totalPages} 面）`, 14, y);
+  y += 8;
+  doc.setFontSize(9);
+  if (paperSummary) doc.text(`用纸：${paperSummary}。双面的文件每一份都从新的一张纸开始。`, 14, y);
+  y += 12;
+
+  /* 按文件清单 */
+  doc.setFontSize(12);
+  doc.text('按文件', 14, y);
+  y += 8;
   doc.setFontSize(9);
   doc.text('文件', 14, y);
   doc.text('纸张', 90, y);
@@ -102,7 +134,8 @@ function toRow(a: FileAnalysis, autoColor: boolean, dotThreshold: number, bpAuto
 }
 
 export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }) {
-  const [rows, setRows] = useState<FileRow[]>([]);
+  // 保留原始文件对象：打印时按页模式拆子 PDF 需要源字节（其余逻辑仍只用 FileRow 字段）
+  const [rows, setRows] = useState<(FileRow & { file?: File })[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [autoColor, setAutoColor] = useState(true);
   const [showPreview, setShowPreview] = useState(true);
@@ -112,6 +145,10 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
   const [setCount, setSetCount] = useState(1); // 整套
   const [records, setRecords] = useState<PrintRecord[]>(() => loadRecords());
   const [showRecords, setShowRecords] = useState(false);
+  const [openRecIdx, setOpenRecIdx] = useState<Set<number>>(new Set()); // 展开的明细行（按序号）
+  const [showDetail, setShowDetail] = useState(true); // 报价明细面板（默认展开，与原版一致）
+  const [showPrice, setShowPrice] = useState(false); // 明细弹层内的价值表编辑器
+  const [pricePaper, setPricePaper] = useState('A4'); // 价值表编辑器当前纸张 tab
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   function showToast(msg: string) {
@@ -124,7 +161,10 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
 
-  const presetFor = (r: FileRow) => presetFromPriceRow(priceRowOf(s, r.paper));
+  const presetFor = (r: FileRow): Preset => ({
+    ...presetFromPriceRow(priceRowOf(s, r.paper)),
+    markupPercent: s.markupPercent,
+  });
 
   // 整套 N 套 = 每个文件份数 × N
   const effectiveRows = useMemo(
@@ -133,13 +173,15 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
   );
   const q = useMemo(() => quote(effectiveRows, presetFor), [effectiveRows, s]);
   const sheets = useMemo(() => sheetCount(effectiveRows), [effectiveRows]);
+  // 报价明细分项（与 quote 同引擎同口径；UI 面板与报价 PDF 共用）
+  const detail = useMemo(() => quoteDetail(effectiveRows, presetFor), [effectiveRows, s]);
 
   // 快捷键接入：导入/打印/导出（能力自动登记供设置页展示）
   useHotkeyActions('batch-print', '批量打印', {
     import: () => inputRef.current?.click(),
     print: doPrint,
     export: () => {
-      if (q) exportQuotePdf(q);
+      if (q) exportQuotePdf(q, detail, paperSummary);
     },
   });
 
@@ -177,27 +219,38 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
     }
     setAnalyzing(true);
     const papers = s.prices.map((pr) => pr.paper);
-    const results: FileRow[] = [];
-    for (const f of ok) {
-      try {
-        // 超时保护：异常 PDF 卡住时也能落一行，不会让列表一直空着
-        const a = await Promise.race([
-          analyzeFile(f),
-          new Promise<never>((_, rej) => setTimeout(() => rej(new Error('分析超时')), 30000)),
-        ]);
-        results.push(toRow(a, autoColor, s.dotThreshold, s.bpAutoDetect, papers));
-      } catch {
-        results.push({
-          name: f.name,
-          pages: 0,
-          paper: 'A4',
-          perPage: [],
-          thumbs: [],
-          copies: 1,
-          duplex: false,
-        });
-      }
-    }
+    // P2 提速：两路并发分析（PDF 页渲染是 IO/CPU 混合，串行等是最慢的用法）；
+    // 保留原顺序写回 results，列表顺序与导入顺序一致
+    const results: (FileRow & { file?: File })[] = new Array(ok.length);
+    let nextIdx = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(2, ok.length) }, async () => {
+        for (;;) {
+          const i = nextIdx++;
+          if (i >= ok.length) return;
+          const f = ok[i];
+          try {
+            // 超时保护：异常 PDF 卡住时也能落一行，不会让列表一直空着
+            const a = await Promise.race([
+              analyzeFile(f),
+              new Promise<never>((_, rej) => setTimeout(() => rej(new Error('分析超时')), 30000)),
+            ]);
+            results[i] = { ...toRow(a, autoColor, s.dotThreshold, s.bpAutoDetect, papers), file: f };
+          } catch {
+            results[i] = {
+              name: f.name,
+              pages: 0,
+              paper: 'A4',
+              perPage: [],
+              thumbs: [],
+              copies: 1,
+              duplex: false,
+              file: f,
+            };
+          }
+        }
+      }),
+    );
     setRows((prev) => [...prev, ...results]);
     setAnalyzing(false);
     const bad = results.filter((r) => r.pages === 0).length;
@@ -286,18 +339,56 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
   function pushRecord() {
     if (!q || rows.length === 0) return;
     const next = [
-      { t: Date.now(), files: rows.length, faces: q.totalPages, totalCents: q.totalCents },
+      { t: Date.now(), files: rows.length, faces: q.totalPages, totalCents: q.totalCents, detail },
       ...records,
     ].slice(0, 50);
     setRecords(next);
     saveRecords(next);
   }
 
-  function doPrint() {
+  // 打印：直接打印导入的原始文件（不再把预览页送去 HTML 打印）。
+  // 一份文件一次送印，页级灰度通过 grayPages 交给主进程的打印载体页按页处理：
+  // 黑白页走灰度、点彩/彩色页保留颜色、不打印页跳过 —— 对应原版 print-files-worker 的
+  // 按页分色直出，但不再拆子 PDF，页序不会被打印队列打乱。
+  async function doPrint() {
     pushRecord();
-    const api = (window as unknown as { electronAPI?: { print?: (o: unknown) => void } }).electronAPI;
-    if (api?.print) api.print({ copies: setCount });
-    else window.print();
+    const base = presetPrintOpts();
+    let sent = 0;
+    let failed = 0;
+    let lastErr = '';
+    showToast('正在准备打印…');
+    for (const r of rows) {
+      if (r.pages === 0 || !r.file) continue;
+      try {
+        const plan = buildPrintPlan(r.perPage);
+        if (plan.pageIndexes.length === 0) continue;
+        const isPdf = /\.pdf$/i.test(r.file.name) || r.file.type === 'application/pdf';
+        const src = isPdf
+          ? new Uint8Array(await r.file.arrayBuffer())
+          : await imageFileToPdfBytes(r.file);
+        const res = await printPdfBytes(src, {
+          ...base,
+          grayPages: plan.grayPages,
+          pages: plan.pageIndexes,
+          copies: r.copies * Math.max(1, setCount),
+          duplex: r.duplex ? 'longEdge' : undefined,
+        });
+        if (res.ok) sent++;
+        else {
+          failed++;
+          lastErr = res.error || res.reason || '';
+        }
+      } catch {
+        failed++;
+      }
+    }
+    showToast(
+      failed > 0
+        ? `已提交 ${sent} 个打印任务，${failed} 个失败${lastErr ? `（${lastErr}）` : '（检查文件是否异常）'}`
+        : sent > 0
+          ? `已提交 ${sent} 个打印任务到打印机`
+          : '没有可打印的页面',
+    );
   }
 
   const selRow = rows[sel.f];
@@ -663,6 +754,12 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
                   不打印
                 </button>
                 <button
+                  className={'btn' + (selPage.mode === 'bw' ? ' active' : '')}
+                  onClick={() => setPageMode(sel.f, sel.p, 'bw')}
+                >
+                  改为黑白
+                </button>
+                <button
                   className={'btn' + (selPage.mode === 'color' ? ' active' : '')}
                   onClick={() => setPageMode(sel.f, sel.p, 'color')}
                 >
@@ -701,13 +798,169 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
           />
           套
         </label>
+        {rows.length > 0 && detail.length > 0 && (
+          <div className="bp-detail-wrap">
+            <button
+              type="button"
+              className="link"
+              aria-expanded={showDetail}
+              onClick={() => setShowDetail((v) => !v)}
+            >
+              报价明细 {showDetail ? '▴' : '▾'}
+            </button>
+            {showDetail && (
+              <div className="bp-detail-pop" role="table" aria-label="报价明细">
+                <div className="bp-detail-title">报价明细</div>
+                {detail.map((d) => (
+                  <div key={d.key} role="row" className="bp-detail-row">
+                    <span className="bp-detail-name">{d.label}</span>
+                    <span className="bp-detail-calc muted">
+                      {d.faces}面 × {formatCents(d.unitCents)}
+                    </span>
+                    <span className="bp-detail-sub">{formatCents(d.subtotalCents)}</span>
+                  </div>
+                ))}
+                <div role="row" className="bp-detail-row total">
+                  <span>合计</span>
+                  <span className="bp-toolbar-spacer" />
+                  <span className="bp-detail-sub">{q ? formatCents(q.totalCents) : '¥0.00'}</span>
+                </div>
+                {paperSummary && (
+                  <p className="bp-detail-note muted">
+                    用纸：{paperSummary.replace(/张/g, ' 张')}。双面的文件每一份都从新的一张纸开始。
+                  </p>
+                )}
+
+                {/* 内嵌价值表编辑器：与原版「报价明细 + 价值表」一致，改价即时重算并保存为本机默认价 */}
+                <div className="bp-detail-price">
+                  <div className="bp-detail-price-hd">
+                    <span>价值表（元/面）</span>
+                    <button type="button" className="link" onClick={() => setShowPrice((v) => !v)}>
+                      {showPrice ? '收起' : '改价'}
+                    </button>
+                  </div>
+                  {showPrice && (
+                    <div className="bp-price-body">
+                      <div className="bp-price-tabs">
+                        {s.prices.map((r) => (
+                          <button
+                            key={r.paper}
+                            type="button"
+                            className={pricePaper === r.paper ? 'on' : ''}
+                            onClick={() => setPricePaper(r.paper)}
+                          >
+                            {r.paper}
+                          </button>
+                        ))}
+                      </div>
+                      {(() => {
+                        const pr = s.prices.find((x) => x.paper === pricePaper) ?? s.prices[0];
+                        if (!pr) return null;
+                        const edit = (patch: Partial<typeof pr>) =>
+                          update({ prices: s.prices.map((x) => (x.paper === pr.paper ? { ...x, ...patch } : x)) });
+                        const fields: [keyof typeof pr, string][] = [
+                          ['bw1', '黑白单'],
+                          ['bw2', '黑白双'],
+                          ['dot1', '点彩单'],
+                          ['dot2', '点彩双'],
+                          ['color1', '彩色单'],
+                          ['color2', '彩色双'],
+                        ];
+                        const tiers = pr.ladder ?? [];
+                        const setTiers = (t: { minFaces: number; unit: number }[]) =>
+                          edit({ ladder: t.length ? t : null });
+                        return (
+                          <>
+                            <div className="bp-price-grid">
+                              {fields.map(([f, lbl]) => (
+                                <label key={f as string}>
+                                  {lbl}
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={0.1}
+                                    value={pr[f] as number}
+                                    onChange={(e) => edit({ [f]: Math.max(0, Number(e.target.value) || 0) } as Partial<typeof pr>)}
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                            <div className="bp-price-ladder">
+                              <span className="muted">阶梯价（满 N 面每面封顶）</span>
+                              {tiers.map((t, i) => (
+                                <span key={i} className="bp-price-tier">
+                                  满
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={t.minFaces}
+                                    onChange={(e) =>
+                                      setTiers(tiers.map((x, j) => (j === i ? { ...x, minFaces: Number(e.target.value) || 0 } : x)))
+                                    }
+                                  />
+                                  面 封顶
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={0.1}
+                                    value={t.unit}
+                                    onChange={(e) =>
+                                      setTiers(tiers.map((x, j) => (j === i ? { ...x, unit: Number(e.target.value) || 0 } : x)))
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    className="link danger"
+                                    onClick={() => setTiers(tiers.filter((_, j) => j !== i))}
+                                  >
+                                    删
+                                  </button>
+                                </span>
+                              ))}
+                              <button
+                                type="button"
+                                className="link"
+                                onClick={() =>
+                                  setTiers([
+                                    ...tiers,
+                                    { minFaces: (tiers[tiers.length - 1]?.minFaces ?? 0) + 100, unit: pr.bw1 * 0.8 },
+                                  ])
+                                }
+                              >
+                                + 加一档
+                              </button>
+                            </div>
+                            <div className="bp-price-markup">
+                              全局加价
+                              <input
+                                type="number"
+                                min={0}
+                                value={s.markupPercent}
+                                onChange={(e) => update({ markupPercent: Math.max(0, Number(e.target.value) || 0) })}
+                              />
+                              %（在所有单价上统一上调）
+                            </div>
+                            <p className="muted bp-price-hint">改价即时生效并保存为本机默认价（与设置页同一份价格表）。</p>
+                            <button type="button" className="btn" onClick={() => update({ prices: defaultPrices() })}>
+                              恢复系统默认价
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <span className="bp-money">预计 {q ? formatCents(q.totalCents) : '¥0.00'}</span>
         <button
           className="btn"
           disabled={!q || rows.length === 0}
           onClick={() => {
             pushRecord();
-            exportQuotePdf(q!);
+            exportQuotePdf(q!, detail, paperSummary);
           }}
         >
           保存 PDF
@@ -732,16 +985,56 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
                     <th>文件</th>
                     <th>面数</th>
                     <th>金额</th>
+                    <th>明细</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((r) => (
-                    <tr key={r.t}>
-                      <td>{new Date(r.t).toLocaleString()}</td>
-                      <td>{r.files}</td>
-                      <td>{r.faces}</td>
-                      <td>{formatCents(r.totalCents)}</td>
-                    </tr>
+                  {records.map((r, idx) => (
+                    <Fragment key={r.t}>
+                      <tr>
+                        <td>{new Date(r.t).toLocaleString()}</td>
+                        <td>{r.files}</td>
+                        <td>{r.faces}</td>
+                        <td>{formatCents(r.totalCents)}</td>
+                        <td>
+                          {r.detail && r.detail.length > 0 ? (
+                            <button
+                              type="button"
+                              className="link"
+                              onClick={() =>
+                                setOpenRecIdx((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(idx)) next.delete(idx);
+                                  else next.add(idx);
+                                  return next;
+                                })
+                              }
+                            >
+                              {openRecIdx.has(idx) ? '收起' : '展开'}
+                            </button>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                      </tr>
+                      {openRecIdx.has(idx) && r.detail && r.detail.length > 0 && (
+                        <tr className="bp-rec-detail">
+                          <td colSpan={5}>
+                            <div className="bp-rec-detail-in">
+                              {r.detail.map((d, di) => (
+                                <div key={di} className="bp-rec-detail-row">
+                                  <span>{d.label}</span>
+                                  <span className="muted">
+                                    {d.faces}面 × {formatCents(d.unitCents)}
+                                  </span>
+                                  <span>{formatCents(d.subtotalCents)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

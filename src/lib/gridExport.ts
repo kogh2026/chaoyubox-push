@@ -44,8 +44,12 @@ export interface GridPdfOpts {
   fileName?: string;
 }
 
-// 多页网格排版导出 PDF（每页一张纸）
-export function exportGridPdf(o: GridPdfOpts, createDoc: PdfDocFactory = defaultPdfDoc): void {
+/**
+ * 多页网格排版导出 PDF（每页一张纸）。
+ * 桌面端优先返回字节交给主进程做 tmp + rename 原子写盘；
+ * 拿不到字节（测试桩 / 环境限制）时退回原来的下载行为，返回 null。
+ */
+export function exportGridPdf(o: GridPdfOpts, createDoc: PdfDocFactory = defaultPdfDoc): Uint8Array | null {
   const doc = createDoc(o.paper.w, o.paper.h);
   writeGridPages(doc, {
     paper: o.paper,
@@ -57,5 +61,12 @@ export function exportGridPdf(o: GridPdfOpts, createDoc: PdfDocFactory = default
     cutLines: o.cutLines,
     pages: o.pages,
   });
+  try {
+    const ab = doc.output?.('arraybuffer');
+    if (ab) return new Uint8Array(ab);
+  } catch {
+    /* 拿不到字节就走下载路径 */
+  }
   doc.save(o.fileName ?? '拼版.pdf');
+  return null;
 }
