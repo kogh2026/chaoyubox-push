@@ -27,6 +27,12 @@ import {
 } from '../lib/exporter';
 import { detectCards, FULL_QUAD, warpToCorrected, type Quad } from '../lib/cardDetect';
 import { detectCardQuadWithML } from '../lib/cardDetectMl';
+import {
+  cardCorrectAvailable,
+  correctImageWithModel,
+  disposeCardCorrectWorker,
+  type ModelCardEntry,
+} from '../lib/cardCorrectClient';
 import { useHotkeyActions } from '../lib/hotkeys';
 import { presetPrintOpts, printPdfBytes } from '../lib/printers';
 import { disposeOcrWorker, recognizeCardType } from '../lib/cardOcr';
@@ -57,58 +63,66 @@ let KEY = 1;
 
 const NEED_CHECK = 0.6; // 置信度低于该值标记「需检查」
 
-/**
- * 读取一张图 → 1..N 条卡。
- * 一张图里有多张证件（翻拍整页、两张卡并排放）时按检测结果拆成多条，
- * 每条各自带自己的四角，后续自动校正/导出互不影响。
- */
-function loadImages(file: File): Promise<CardItem[]> {
+/** 读文件 → HTMLImageElement（objectURL 由调用方接管） */
+function loadImageEl(file: File): Promise<{ img: HTMLImageElement; objectUrl: string }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => {
-      const det = detectCards(img);
-      const cards = det.cards;
-      if (cards.length === 0) {
-        // 没检出可用卡面：保留整图 + 低置信，交给用户手动框选
-        resolve([
-          {
-            key: KEY++,
-            name: file.name,
-            img,
-            dataUrl: url,
-            type: 'idcard',
-            rotation: 0,
-            checked: true,
-            copies: 1,
-            quad: FULL_QUAD,
-            confidence: 0.4,
-            manual: false,
-          },
-        ]);
-        return;
-      }
-      resolve(
-        cards.map((c, i) => ({
-          key: KEY++,
-          name: cards.length > 1 ? `${file.name}（${i + 1}/${cards.length}）` : file.name,
-          img,
-          dataUrl: url,
-          type: 'idcard',
-          rotation: 0,
-          checked: true,
-          copies: 1,
-          quad: c.quad,
-          confidence: c.confidence,
-          manual: false,
-        })),
-      );
-    };
+    img.onload = () => resolve({ img, objectUrl: url });
     img.onerror = () => {
       URL.revokeObjectURL(url);
       reject(new Error('图片读取失败'));
     };
     img.src = url;
+  });
+}
+
+function baseItem(
+  file: File,
+  objectUrl: string,
+  img: HTMLImageElement,
+  quad: Quad,
+  confidence: number,
+  multiIdx?: { i: number; n: number },
+): CardItem {
+  return {
+    key: KEY++,
+    name: multiIdx ? (multiIdx.n > 1 ? `${file.name}（${multiIdx.i + 1}/${multiIdx.n}）` : file.name) : file.name,
+    img,
+    dataUrl: objectUrl,
+    type: 'idcard',
+    rotation: 0,
+    checked: true,
+    copies: 1,
+    quad,
+    confidence,
+    manual: false,
+  };
+}
+
+/** 经典 CV 路径：一张图 → 0..N 条卡（检测+多卡拆分） */
+function itemsFromCv(file: File, objectUrl: string, img: HTMLImageElement): CardItem[] {
+  const det = detectCards(img);
+  const cards = det.cards;
+  if (cards.length === 0) {
+    // 没检出可用卡面：保留整图 + 低置信，交给用户手动框选
+    return [baseItem(file, objectUrl, img, FULL_QUAD, 0.4)];
+  }
+  return cards.map((c, i) => baseItem(file, objectUrl, img, c.quad, c.confidence, { i, n: cards.length }));
+}
+
+/** 增强模型路径（爱印记卡矫正 FP32）：一张图 → 0..N 条已校正卡面；未检出返回 [] */
+async function itemsFromModel(
+  file: File,
+  objectUrl: string,
+  img: HTMLImageElement,
+): Promise<CardItem[]> {
+  const entries: ModelCardEntry[] = await correctImageWithModel(img);
+  return entries.map((e, i) => {
+    const it = baseItem(file, objectUrl, img, e.quad, e.confidence, { i, n: entries.length });
+    it.corrected = e.corrected;
+    it.auto = true; // 模型路径直接产出校正图
+    return it;
   });
 }
 
@@ -138,11 +152,13 @@ export default function CardLayout() {
   const [pos, setPos] = useState<Pos>('center');
   const [offY, setOffY] = useState(0);
   const [offX, setOffX] = useState(0);
+  const [gap, setGap] = useState(4); // 图片间距 mm（爱印 0–60）
   const [algo, setAlgo] = useState<LayoutAlgo>('grid'); // T0 布局策略
   const [showGuide, setShowGuide] = useState(true); // T1 预览参考线（不烧入导出）
   const [cropMarks, setCropMarks] = useState(false); // T1 蚂蚁线裁切口（烧入导出）
   const [autoCorrect, setAutoCorrect] = useState(true); // T3 识别置信度高时自动校正
-  const [useML, setUseML] = useState(false); // T3 可选 ML 增强（默认关闭）
+  const [enhanceModel, setEnhanceModel] = useState(true); // 增强模型（爱印记卡矫正 FP32）：主路径
+  const [useML, setUseML] = useState(false); // T3 可选 ML 增强（经典 CV 不足时的备选实验路径）
   const [colorMode, setColorMode] = useState<ColorMode>('enhance');
   const [sat, setSat] = useState(100);
   const [sharpen, setSharpen] = useState(0);
@@ -161,8 +177,8 @@ export default function CardLayout() {
   const checked = useMemo(() => items.filter((i) => i.checked), [items]);
 
   const cfg: LayoutCfg = useMemo(
-    () => ({ perPage, gap: 4, shrink, pos, offX, offY }),
-    [perPage, shrink, pos, offX, offY],
+    () => ({ perPage, gap, shrink, pos, offX, offY }),
+    [perPage, gap, shrink, pos, offX, offY],
   );
 
   // 本页所有卡按"最大卡尺寸"统一网格（混合类型时取大者，保证不裁切）
@@ -267,13 +283,30 @@ export default function CardLayout() {
   async function handleFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
     setBusy(true);
+    const files = Array.from(list).filter((f) => f.type.startsWith('image/'));
+    const modelReady = enhanceModel && cardCorrectAvailable();
     const added: CardItem[] = [];
-    for (const f of Array.from(list)) {
-      if (!f.type.startsWith('image/')) continue;
+    for (let fi = 0; fi < files.length; fi += 1) {
+      const f = files[fi];
       try {
-        const its = await loadImages(f);
+        const { img, objectUrl } = await loadImageEl(f);
+        if (modelReady) {
+          // 增强模型主路径：直接产出已校正卡面（含多卡拆分与 90° 摆正）
+          if (files.length > 1) setMsg(`增强识别中 ${fi + 1}/${files.length}：${f.name}`);
+          try {
+            const its = await itemsFromModel(f, objectUrl, img);
+            if (its.length > 0) {
+              added.push(...its);
+              continue;
+            }
+            // 模型正常但没检出 → 回退经典 CV
+          } catch {
+            // 模型/Worker 失败 → 回退经典 CV
+          }
+        }
+        const its = itemsFromCv(f, objectUrl, img);
         for (const it of its) {
-          // T3：识别置信度高时自动透视矫正；开启 ML 且经典检测不足时尝试 ML 增强。
+          // T3：识别置信度高时自动透视矫正；开启旧版 ML 且经典检测不足时尝试增强。
           // 任一失败或不满足阈值 → 不自动处理，保持原图，由用户手动裁切兜底。
           if (autoCorrect) {
             if (it.confidence >= NEED_CHECK) {
@@ -309,6 +342,7 @@ export default function CardLayout() {
     }
     setItems((prev) => [...prev, ...added]);
     setBusy(false);
+    setMsg('');
     // 导入完成后立刻排队做证件类型识别（后台逐张进行，不阻塞继续添加）
     enqueueOcr(added);
   }
@@ -382,6 +416,7 @@ export default function CardLayout() {
   useEffect(() => {
     return () => {
       void disposeOcrWorker();
+      disposeCardCorrectWorker(); // 增强模型 Worker（41MB 模型常驻）
     };
   }, []);
 
@@ -585,20 +620,7 @@ export default function CardLayout() {
           <button className="btn" onClick={() => inputRef.current?.click()}>
             添加照片
           </button>
-          <button
-            className="btn"
-            disabled={items.length === 0}
-            onClick={() => enqueueOcr(items, true)}
-            title="本地 OCR 自动识别证件类型（身份证/户口本/护照/驾驶证），离线可用"
-          >
-            识别类型
-          </button>
-          <button
-            className="btn"
-            disabled={items.length === 0}
-            onClick={() => enqueueOcr(items, true)}
-            title="本地 OCR 自动识别证件类型（身份证/户口本/护照/驾驶证），离线可用"
-          >
+          <button className="btn" disabled={items.length === 0} onClick={() => enqueueOcr(items, true)}>
             识别类型
           </button>
           <select value={sortMode} onChange={(e) => applySort(e.target.value as 'import' | 'name')}>
@@ -621,7 +643,11 @@ export default function CardLayout() {
             multiple
             accept="image/*"
             style={{ display: 'none' }}
-            onChange={(e) => handleFiles(e.target.files)}
+            onChange={(e) => {
+              handleFiles(e.target.files);
+              // 清空 value：同一批文件「清空列表后再次导入」时 change 才会再次触发
+              e.currentTarget.value = '';
+            }}
           />
         </div>
 
@@ -641,8 +667,6 @@ export default function CardLayout() {
             </p>
           </div>
         )}
-
-        {ocrMsg && <div className="ph-ocr-global muted">{ocrMsg}</div>}
 
         {ocrMsg && <div className="ph-ocr-global muted">{ocrMsg}</div>}
 
@@ -923,6 +947,15 @@ export default function CardLayout() {
           <label className="chk">
             <input
               type="checkbox"
+              checked={enhanceModel}
+              onChange={(e) => setEnhanceModel(e.target.checked)}
+              disabled={!cardCorrectAvailable()}
+            />
+            增强模型（AI 卡面精定位{cardCorrectAvailable() ? '·已内置' : '·桌面端可用'}）
+          </label>
+          <label className="chk" style={{ marginTop: 6 }}>
+            <input
+              type="checkbox"
               checked={autoCorrect}
               onChange={(e) => setAutoCorrect(e.target.checked)}
             />
@@ -930,9 +963,11 @@ export default function CardLayout() {
           </label>
           <label className="chk" style={{ marginTop: 6 }}>
             <input type="checkbox" checked={useML} onChange={(e) => setUseML(e.target.checked)} />
-            AI 增强识别（实验·需下载模型）
+            抠图增强识别（实验·经典检测不足时）
           </label>
-          <p className="hint">自动识别不准或失败时，点卡片的 ⛶ 可手动裁切修正。</p>
+          <p className="hint">
+            增强模型=爱印同款「卡证矫正 FP32」：整图神经网络定位卡面四角+自动摆正，失败或未检出时自动回退本地边缘检测。不准时点卡片的 ⛶ 手动裁切修正。
+          </p>
         </div>
 
         <div className="icw-sec">
@@ -975,6 +1010,21 @@ export default function CardLayout() {
               onChange={(e) => setOffX(Number(e.target.value))}
             />
             <em>{offX} mm</em>
+          </div>
+        </div>
+
+        <div className="icw-sec">
+          <h4>图片间距</h4>
+          <div className="slider-row">
+            <span>间距</span>
+            <input
+              type="range"
+              min={0}
+              max={60}
+              value={gap}
+              onChange={(e) => setGap(Number(e.target.value))}
+            />
+            <em>{gap} mm</em>
           </div>
         </div>
 
