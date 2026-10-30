@@ -447,7 +447,10 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
             multiple
             accept=".pdf,image/*"
             hidden
-            onChange={(e) => handleFiles(e.target.files)}
+            onChange={(e) => {
+              handleFiles(e.target.files);
+              e.currentTarget.value = ''; // 同款文件重选时 change 才会再触发
+            }}
           />
           <input
             ref={folderRef}
@@ -457,7 +460,10 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
             // @ts-expect-error 非标准属性
             webkitdirectory=""
             directory=""
-            onChange={(e) => handleFiles(e.target.files)}
+            onChange={(e) => {
+              handleFiles(e.target.files);
+              e.currentTarget.value = ''; // 同款文件重选时 change 才会再触发
+            }}
           />
           <span className="bp-toolbar-spacer" />
           <div className="bp-seg">

@@ -140,7 +140,10 @@ export default function OfficeToPdf() {
           multiple
           accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx"
           style={{ display: 'none' }}
-          onChange={(e) => pick(e.target.files)}
+          onChange={(e) => {
+            pick(e.target.files);
+            e.currentTarget.value = ''; // 同款文件重选时 change 才会再触发
+          }}
         />
       </section>
 

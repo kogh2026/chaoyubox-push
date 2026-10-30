@@ -86,7 +86,10 @@ export default function IdPhotoLeft({
         multiple
         accept="image/*"
         hidden
-        onChange={(e) => addFiles(e.target.files)}
+        onChange={(e) => {
+          addFiles(e.target.files);
+          e.currentTarget.value = ''; // 同款文件重选时 change 才会再触发
+        }}
       />
       <input
         ref={folderRef}
@@ -96,7 +99,10 @@ export default function IdPhotoLeft({
         // @ts-expect-error 非标准属性
         webkitdirectory=""
         directory=""
-        onChange={(e) => addFiles(e.target.files)}
+        onChange={(e) => {
+          addFiles(e.target.files);
+          e.currentTarget.value = ''; // 同款文件重选时 change 才会再触发
+        }}
       />
       <div
         className={'idp-photos' + (over ? ' over' : '')}
