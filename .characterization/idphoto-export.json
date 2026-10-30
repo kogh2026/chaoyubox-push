@@ -1,0 +1,72 @@
+{
+  "generatedBy": "tools/export_characterization.py",
+  "dpi": 300,
+  "files": [
+    {
+      "group": "single",
+      "name": "证件照_示例照片1_1寸 25×35.jpg",
+      "format": "JPEG",
+      "w": 295,
+      "h": 413,
+      "dpi": [
+        300,
+        300
+      ]
+    },
+    {
+      "group": "single",
+      "name": "证件照_示例照片2_1寸 25×35.jpg",
+      "format": "JPEG",
+      "w": 295,
+      "h": 413,
+      "dpi": [
+        300,
+        300
+      ]
+    },
+    {
+      "group": "multi",
+      "name": "证件照_示例照片1_1寸 25×35.jpg",
+      "format": "JPEG",
+      "w": 295,
+      "h": 413,
+      "dpi": [
+        300,
+        300
+      ]
+    },
+    {
+      "group": "multi",
+      "name": "证件照_示例照片2_1寸 25×35.jpg",
+      "format": "JPEG",
+      "w": 295,
+      "h": 413,
+      "dpi": [
+        300,
+        300
+      ]
+    },
+    {
+      "group": "multi",
+      "name": "证件照_示例照片1_2寸 35×49.jpg",
+      "format": "JPEG",
+      "w": 413,
+      "h": 579,
+      "dpi": [
+        300,
+        300
+      ]
+    },
+    {
+      "group": "multi",
+      "name": "证件照_示例照片2_2寸 35×49.jpg",
+      "format": "JPEG",
+      "w": 413,
+      "h": 579,
+      "dpi": [
+        300,
+        300
+      ]
+    }
+  ]
+}

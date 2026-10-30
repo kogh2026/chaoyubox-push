@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# 提交前：类型检查 + 相关单测 + 设计反模式静态扫描（不构建，秒级）
+# 逻辑见 tools/git-hooks.mjs；绕过：git commit --no-verify
+node tools/git-hooks.mjs pre-commit

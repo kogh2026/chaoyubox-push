@@ -1,0 +1,11 @@
+{
+  "tool": "impeccable@4.8.0",
+  "updatedAt": "2026-10-29T03:46:20.123Z",
+  "note": "已认可存在的设计问题；新增问题才会让 ui:check 失败。重建：npm run ui:baseline",
+  "counts": {
+    "primary": 0,
+    "advisory": 0,
+    "byRule": {}
+  },
+  "findings": []
+}

@@ -1,0 +1,19 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "dist/**",
+      "node_modules/**",
+      ".tmp/**",
+      "dist-pkg*/**"
+    ],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-10-29T03:46:07.500Z",
+        "reason": "桌面工具刻意跟随 Windows 系统 UI 字体，不用展示字体"
+      }
+    ]
+  }
+}

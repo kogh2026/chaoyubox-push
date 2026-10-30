@@ -6,6 +6,8 @@ dist/
 out/
 build-out/
 release/
+# 打包输出（固定 dist-pkg-current，见 tools/pack.mjs）
+dist-pkg*/
 
 # 日志与系统文件
 *.log
@@ -17,8 +19,18 @@ Thumbs.db
 .vscode/
 .idea/
 
-# 测试临时目录（vitest TEMP 重定向，规避 fs shim）
+# UI 回归检查（Impeccable）：基线要提交，报告和个人覆盖配置不进库
+.impeccable/reports/
+.impeccable/config.local.json
+
+# 临时产物 / 一次性探针（.characterization 是基线，要提交）
 .tmp/
 
-# E2E 截图输出
+# 恢复/回退草稿与一次性快照（不入库）
+.scratch/recovered/
+.scratch/revert-backup/
+.scratch/package.json.final
+
+# E2E 测试运行产物（每次跑都重新生成，不入库）
 tests/e2e/.out/
+tests/e2e/_real_card_io/

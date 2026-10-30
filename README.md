@@ -1,4 +1,4 @@
-# 超誉工作台 clone（桌面工具箱原型）
+# 超誉工作台（桌面工具箱原型）
 
 按 [replica](https://github.com/Jakeschincariol/replica-skill) 流程对
 [aiyinbox.com](https://www.aiyinbox.com/)（原版桌面工具箱）做的克隆起点。

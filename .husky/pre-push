@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# 推送前：全量单测 + 完整 UI 回归（构建 dist 后跑静态 + 运行时两遍）
+# 逻辑见 tools/git-hooks.mjs；绕过：git push --no-verify
+node tools/git-hooks.mjs pre-push
