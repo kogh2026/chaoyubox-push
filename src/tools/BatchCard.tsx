@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeyActions } from '../lib/hotkeys';
+import { presetPrintOpts, printPdfBytes } from '../lib/printers';
 import * as XLSX from 'xlsx';
 import { PAPER_SIZES, computeLayout, type PaperSize } from '../lib/cardLayout';
 import { exportGridPdf, renderGridPage } from '../lib/gridExport';
+import { saveBytes, outcomeMessage, revealIfWanted, type SaveOutcome } from '../lib/exporter';
 
 interface RecordT {
   name: string;
@@ -41,6 +43,15 @@ export default function BatchCard() {
   const xlsxRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const thumbRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+  const [msg, setMsg] = useState(''); // 导出结果反馈
+
+  // 导出后统一反馈：桌面端报真实路径/失败原因，浏览器环境只说已开始下载，取消不打扰
+  function report(r: SaveOutcome | Promise<SaveOutcome>) {
+    void Promise.resolve(r).then((v) => {
+      setMsg(v.ok ? outcomeMessage(v) : v.code === 'cancelled' ? '' : v.error || '保存失败');
+      void revealIfWanted(v.path, v.fallback);
+    });
+  }
 
   const paper: PaperSize = useMemo(
     () => PAPER_SIZES.find((p) => p.id === paperId) ?? PAPER_SIZES[0],
@@ -184,13 +195,16 @@ export default function BatchCard() {
     img.src = url;
   }
 
-  function exportPdf() {
-    if (records.length === 0) return;
+  /** 拼版 PDF 字节：导出与打印同源，避免两处参数漂移 */
+  function cardPdfBytes(): { bytes: Uint8Array | null; fileName: string } {
+    const fileName = `批量制卡_${template}_${records.length}张.pdf`;
+    if (records.length === 0) return { bytes: null, fileName };
     const pages: HTMLCanvasElement[][] = [];
     for (let p = 0; p < totalSheets; p++) {
       pages.push(cardCanvases.slice(p * layout.perSheet, (p + 1) * layout.perSheet));
     }
-    exportGridPdf({
+    // 文件名只写一处，避免 exporter 落盘与 exportGridPdf 兜底下载用的名字不一致
+    const bytes = exportGridPdf({
       paper,
       layout,
       itemW: cardW,
@@ -199,13 +213,30 @@ export default function BatchCard() {
       gap,
       cutLines,
       pages,
-      fileName: `批量制卡_${template}_${records.length}张.pdf`,
+      fileName,
     });
+    return { bytes, fileName };
   }
 
-  function doPrint() {
+  function exportPdf() {
+    if (records.length === 0) return;
+    const { bytes, fileName } = cardPdfBytes();
+    // 拿到字节说明还没落盘，交给主进程原子写；返回 null 表示函数内部已自行触发下载
+    if (bytes) report(saveBytes(bytes, fileName));
+  }
+
+  // 打印：拼版 PDF → 主进程 PDFium 静默直出；无排版结果时回退窗口打印
+  async function doPrint() {
     const api = (window as unknown as { electronAPI?: { print?: (o: unknown) => void } }).electronAPI;
-    if (api?.print) api.print({ grayscale: false, copies: 1 });
+    const { bytes } = cardPdfBytes();
+    if (bytes) {
+      setMsg('正在发送到打印机…');
+      // 证卡是小纸张、字小，栅格化提到 400DPI
+      const r = await printPdfBytes(bytes, { ...presetPrintOpts(), dpi: 400, copies: 1 });
+      setMsg(r.ok ? '已发送到打印机' : `打印失败：${r.reason || r.error || '未知原因'}`);
+      return;
+    }
+    if (api?.print) api.print({ ...presetPrintOpts(), grayscale: false, copies: 1 });
     else window.print();
   }
 
@@ -383,6 +414,8 @@ export default function BatchCard() {
         </button>
       </section>
 
+      {/* 导出结果反馈：桌面端给真实路径/失败原因，浏览器环境只说已开始下载 */}
+      {msg && <div className="hint">{msg}</div>}
       <div className="hint">
         提示：席卡适合会议 / 宴席桌签（横向大号姓名）；工作证适合活动入场（含照片框与编号）。纯前端生成，名单与照片不出本机。
       </div>

@@ -233,6 +233,7 @@ export interface PageStyle {
   sat: number; // 0-100 浓度
   sharpen: number; // -15..15 锐度
   wm: WmCfg;
+  cropMarks?: boolean; // 蚂蚁线裁切口（导出/预览同源，远离卡边）
 }
 
 // 渲染一页到 canvas（预览与导出共用）
@@ -283,6 +284,36 @@ export function renderCardPage(
         ctx.fillText(style.wm.text, x, y);
       }
     }
+    ctx.restore();
+  }
+
+  // 蚂蚁线裁切口：在每个卡槽四角外缘画短虚线，便于裁切对齐（远离卡面）
+  if (style.cropMarks) {
+    const tick = Math.max(6, pxPerMm * 2.5); // 裁切标记长度 ~2.5mm
+    ctx.save();
+    ctx.strokeStyle = 'rgba(80,80,80,0.85)';
+    ctx.lineWidth = Math.max(0.6, pxPerMm * 0.18);
+    ctx.setLineDash([pxPerMm * 0.9, pxPerMm * 0.7]);
+    placements.forEach((p) => {
+      const x0 = p.x * pxPerMm;
+      const y0 = p.y * pxPerMm;
+      const x1 = (p.x + p.w) * pxPerMm;
+      const y1 = (p.y + p.h) * pxPerMm;
+      const corners = [
+        [x0, y0, 1, 1],
+        [x1, y0, -1, 1],
+        [x1, y1, -1, -1],
+        [x0, y1, 1, -1],
+      ] as const;
+      for (const [cx, cy, dx, dy] of corners) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + dx * tick, cy);
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx, cy + dy * tick);
+        ctx.stroke();
+      }
+    });
     ctx.restore();
   }
 }
