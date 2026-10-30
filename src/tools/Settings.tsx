@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
+import { APP_VERSION } from '../lib/appVersion';
 import { jsPDF } from 'jspdf';
 import { useSettings, type PriceRow, type PrinterPreset, type AppSettings } from '../lib/appSettings';
+import { canListPrinters, listSystemPrinters, type SysPrinter } from '../lib/printers';
+import { pickSaveDir, canSaveToDisk } from '../lib/exporter';
 import {
   DEFAULT_BINDINGS,
   HOTKEY_ACTIONS,
@@ -146,6 +149,17 @@ function PricePage({ s, update }: { s: AppSettings; update: (p: Partial<AppSetti
           红章、彩色标题、小 logo 这类只有一点色彩的页按点彩收；彩色更多的按彩色，几乎看不出颜色的（不到 0.05%）按黑白。
         </p>
 
+        <div className="st-markup">
+          全局加价
+          <input
+            type="number"
+            min={0}
+            value={s.markupPercent}
+            onChange={(e) => update({ markupPercent: Math.max(0, Number(e.target.value) || 0) })}
+          />
+          %（在所有单价上统一上调，店铺临时调价用）
+        </div>
+
         <table className="st-price">
           <thead>
             <tr>
@@ -197,35 +211,63 @@ function PricePage({ s, update }: { s: AppSettings; update: (p: Partial<AppSetti
           (() => {
             const row = s.prices.find((x) => x.paper === ladderPaper);
             if (!row) return null;
+            const tiers = row.ladder ?? [];
+            const setTiers = (t: { minFaces: number; unit: number }[]) =>
+              editRow(row.paper, { ladder: t.length ? t : null });
             return (
               <div className="st-ladder">
-                <b>{row.paper} 阶梯价</b>：满
-                <input
-                  type="number"
-                  min={0}
-                  value={row.ladder?.min ?? 100}
-                  onChange={(e) =>
-                    editRow(row.paper, {
-                      ladder: { min: Number(e.target.value) || 0, unit: row.ladder?.unit ?? row.bw1 * 0.8 },
-                    })
-                  }
-                />
-                面，每面单价封顶
-                <input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={row.ladder?.unit ?? 0}
-                  onChange={(e) =>
-                    editRow(row.paper, {
-                      ladder: { min: row.ladder?.min ?? 100, unit: Number(e.target.value) || 0 },
-                    })
-                  }
-                />
-                元（黑白/点彩/彩色都按此封顶取低）
-                <button className="link danger" onClick={() => editRow(row.paper, { ladder: null })}>
-                  移除阶梯价
-                </button>
+                <b>{row.paper} 阶梯价（多档，越印越便宜）</b>
+                <p className="muted">
+                  满 N 面后每面单价封顶：同一档对黑白 / 点彩 / 彩色都生效，与各自基础单价取低。按「满面数」升序、封顶价递减最合理。
+                </p>
+                {tiers.map((t, i) => (
+                  <div key={i} className="st-ladder-row">
+                    满
+                    <input
+                      type="number"
+                      min={0}
+                      value={t.minFaces}
+                      onChange={(e) =>
+                        setTiers(tiers.map((x, j) => (j === i ? { ...x, minFaces: Number(e.target.value) || 0 } : x)))
+                      }
+                    />
+                    面，每面封顶
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={t.unit}
+                      onChange={(e) =>
+                        setTiers(tiers.map((x, j) => (j === i ? { ...x, unit: Number(e.target.value) || 0 } : x)))
+                      }
+                    />
+                    元
+                    <button
+                      className="link danger"
+                      onClick={() => setTiers(tiers.filter((_, j) => j !== i))}
+                    >
+                      删
+                    </button>
+                  </div>
+                ))}
+                <div className="st-ladder-actions">
+                  <button
+                    className="link"
+                    onClick={() =>
+                      setTiers([
+                        ...tiers,
+                        { minFaces: (tiers[tiers.length - 1]?.minFaces ?? 0) + 100, unit: row.bw1 * 0.8 },
+                      ])
+                    }
+                  >
+                    + 加一档
+                  </button>
+                  {tiers.length > 0 && (
+                    <button className="link danger" onClick={() => setTiers([])}>
+                      移除全部阶梯价
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })()}
@@ -268,16 +310,22 @@ function PCell({ v, on }: { v: number; on: (v: number) => void }) {
 const ZOOMS = [80, 90, 100, 110, 125, 150];
 
 function GeneralPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSettings>) => void }) {
+  // E12：进入设置页时把已保存的开机自启状态同步到系统登录项，保证首次也一致
+  useEffect(() => {
+    (window as unknown as { electronAPI?: { setAutoStart?: (b: boolean) => void } }).electronAPI?.setAutoStart?.(
+      s.autoStart,
+    );
+    // 仅在挂载时同步一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function pickFolder() {
-    const api = (window as unknown as {
-      electronAPI?: { pickFolder?: () => Promise<string | null> };
-    }).electronAPI;
-    if (api?.pickFolder) {
-      const dir = await api.pickFolder();
-      if (dir) update({ exportDir: dir });
-    } else {
-      const dir = window.prompt('输入默认保存目录（桌面版可直接选择文件夹）：', s.exportDir);
-      if (dir !== null) update({ exportDir: dir });
+    // 主进程 pick-save-dir IPC 由方案 C 补齐；之前只有 UI 没有桥接，一直退回 window.prompt
+    const dir = await pickSaveDir(s.exportDir || undefined);
+    if (dir) update({ exportDir: dir });
+    else if (!canSaveToDisk()) {
+      const input = window.prompt('输入默认保存目录（桌面版可直接选择文件夹）：', s.exportDir);
+      if (input !== null) update({ exportDir: input });
     }
   }
 
@@ -316,12 +364,27 @@ function GeneralPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSet
             </option>
           ))}
         </select>
+        <h3>跟随窗口大小自动缩放</h3>
+        <p className="muted">
+          开启后，窗口变小时界面整体等比缩小（避免出现横向滚动条、按钮被挤成竖排、右侧面板被裁掉），
+          窗口变大时按同比例放大，各工具在三档宽度下的间距与视觉层级保持一致；缩放下限 72%、上限 120%。
+        </p>
+        <Toggle on={s.autoFitZoom} onchg={(v) => update({ autoFitZoom: v })} />
       </div>
 
       <div className="st-sec">
         <h2>开机自动启动</h2>
         <p className="muted">登录桌面后自动运行扫瞄工具箱。</p>
-        <Toggle on={s.autoStart} onchg={(v) => update({ autoStart: v })} />
+        <Toggle
+          on={s.autoStart}
+          onchg={(v) => {
+            update({ autoStart: v });
+            // E12：同步到系统登录项，开关才真正生效
+            (window as unknown as { electronAPI?: { setAutoStart?: (b: boolean) => void } }).electronAPI?.setAutoStart?.(
+              v,
+            );
+          }}
+        />
       </div>
 
       <div className="st-sec">
@@ -389,6 +452,22 @@ function Toggle({ on, onchg }: { on: boolean; onchg: (v: boolean) => void }) {
 function PrintPresetPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSettings>) => void }) {
   const [selId, setSelId] = useState(0);
   const sel = s.printPresets.find((p) => p.id === selId) ?? s.printPresets[0];
+
+  // 系统打印机枚举（桌面版经 list-printers IPC；浏览器预览不可用，为空并给出提示）
+  const [printers, setPrinters] = useState<SysPrinter[]>([]);
+  const [pLoading, setPLoading] = useState(true);
+
+  async function refreshPrinters() {
+    setPLoading(true);
+    try {
+      setPrinters(await listSystemPrinters());
+    } finally {
+      setPLoading(false);
+    }
+  }
+  useEffect(() => {
+    void refreshPrinters();
+  }, []);
 
   function editSel(patch: Partial<PrinterPreset>) {
     update({ printPresets: s.printPresets.map((p) => (p.id === sel.id ? { ...p, ...patch } : p)) });
@@ -477,11 +556,21 @@ function PrintPresetPage({ s, update }: { s: AppSettings; update: (p: Partial<Ap
                 <div className="st-pp-edit">
                   <label>
                     打印机
-                    <input
+                    <select
                       value={sel.printer === 'auto' ? '' : sel.printer}
-                      placeholder="留空 = 打印时选"
                       onChange={(e) => editSel({ printer: e.target.value || 'auto' })}
-                    />
+                    >
+                      <option value="">留空 = 打印时选</option>
+                      {printers.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.displayName}
+                          {p.isDefault ? '（默认）' : ''}
+                        </option>
+                      ))}
+                      {sel.printer !== 'auto' && !printers.some((p) => p.name === sel.printer) && (
+                        <option value={sel.printer}>{sel.printer}（当前不在线）</option>
+                      )}
+                    </select>
                   </label>
                   <label>
                     纸张
@@ -516,6 +605,22 @@ function PrintPresetPage({ s, update }: { s: AppSettings; update: (p: Partial<Ap
                       <option value="duplex">双面</option>
                     </select>
                   </label>
+                </div>
+                <div className="st-pp-printer-status">
+                  {pLoading ? (
+                    <span className="muted">正在检测本机打印机…</span>
+                  ) : (
+                    <span className="muted">
+                      {printers.length > 0
+                        ? `检测到 ${printers.length} 台打印机${printers.find((p) => p.isDefault) ? ` · 默认：${printers.find((p) => p.isDefault)!.displayName}` : ''}`
+                        : canListPrinters()
+                          ? '未检测到打印机：请检查打印机电源与连接，或在 Windows 设置里确认驱动正常后点「刷新」'
+                          : '浏览器预览无法检测打印机，请在桌面版中设置（安装后本项自动可用）'}
+                    </span>
+                  )}
+                  <button className="link" onClick={() => void refreshPrinters()} disabled={pLoading}>
+                    刷新
+                  </button>
                 </div>
                 <div className="st-row">
                   <button className="btn danger" onClick={() => del(sel.id)}>
@@ -704,7 +809,7 @@ function LabPage({ s, update }: { s: AppSettings; update: (p: Partial<AppSetting
     const lines = [
       `打印测试页 · ${size}（${pw} x ${ph} mm）`,
       '放大说明页可被缩小了；四周红框标着靠纸边的毫米数，被切掉几圈就把「安全边距」设成最外侧完整可见的那个数字。',
-      s.shopName ? `${s.shopName}${s.shopPhone ? ' · ' + s.shopPhone : ''}` : '超誉工作台 clone',
+      s.shopName ? `${s.shopName}${s.shopPhone ? ' · ' + s.shopPhone : ''}` : '超誉工作台',
     ];
     lines.forEach((t, i) => doc.text(t, pw / 2, ph - M + 5.5 + i * 3, { align: 'center' }));
     doc.save('打印测试页.pdf');
@@ -768,7 +873,7 @@ function AboutPage() {
       <h1>关于</h1>
       <div className="st-card">
         <p>
-          <b>超誉工作台 clone</b> · v0.4.0
+          <b>超誉工作台</b> · v{APP_VERSION}
         </p>
         <p className="muted">
           对 aiyinbox.com 桌面端的学习性复刻：批量打印报价、证卡拼版、证件照批量处理、图片拼版、批量制卡、Office 转
@@ -778,14 +883,13 @@ function AboutPage() {
       <div className="st-card">
         <h3>开源许可</h3>
         <p className="muted">
-          「PDF 工具箱」为第三方开源项目的离线集成，全部处理在本机完成、无网络请求：
+          「PDF 工具箱」为本项目自研的离线工具集，全部处理在本机完成、无网络请求，依赖：
         </p>
         <p className="st-caps-line">
-          · 离线 PDF 工具箱（信创 PDF 工具箱 XCPDF）V7.1 — <b>MIT License</b> © wallechfox
-          <br />· 其内部依赖：pdf.js（Apache-2.0）、@cantoo/pdf-lib（MIT）、JSZip（MIT/GPL 双许可，取
-          MIT）、Twemoji 图形（CC-BY 4.0）
+          · pdf-lib（MIT）— PDF 结构读写
+          <br />· pdf.js（Apache-2.0）— 渲染与大纲解析
+          <br />· JSZip（MIT/GPL 双许可，取 MIT）— 多文件打包
         </p>
-        <p className="muted">项目地址：github.com/wallechfox/offline-pdf-tools</p>
       </div>
     </div>
   );

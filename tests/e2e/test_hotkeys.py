@@ -37,22 +37,28 @@ with sync_playwright() as pw:
     # ---- 2) 默认键位：缩放 Ctrl+= / Ctrl+- / Ctrl+0 ----
     # 注意：先 blur——上一步焦点在搜索框，打字保护会正确吞掉快捷键
     pg.evaluate("() => document.activeElement.blur()")
+    # 实际生效的 zoom = 用户缩放 × 跟随窗口的自动适配系数（lib/uiScale），
+    # 所以这里按"相对初始值"断言，既验证快捷键语义，又不依赖当前窗口大小
+    def ui_zoom():
+        return float(pg.evaluate("() => document.documentElement.style.zoom") or 1)
+
+    base = ui_zoom()
     zoom0 = pg.evaluate("() => document.documentElement.style.zoom")
     pg.keyboard.press("Control+=")
     pg.wait_for_timeout(150)
     zoom_in = pg.evaluate("() => document.documentElement.style.zoom")
     print("ZOOM:", zoom0, "->", zoom_in)
-    assert zoom_in == "1.1"
+    assert abs(ui_zoom() / base - 1.1) < 0.01, f"Ctrl+= 应放大到 110%（相对 {base}）"
     pg.keyboard.press("Control+-")
     pg.wait_for_timeout(150)
-    assert pg.evaluate("() => document.documentElement.style.zoom") == "1"
+    assert abs(ui_zoom() - base) < 0.005, "Ctrl+- 应回到上一级"
     pg.keyboard.press("Control+=")
     pg.keyboard.press("Control+=")
     pg.wait_for_timeout(150)
-    assert pg.evaluate("() => document.documentElement.style.zoom") == "1.2"
+    assert abs(ui_zoom() / base - 1.2) < 0.01, "连按两次 Ctrl+= 应到 120%"
     pg.keyboard.press("Control+0")
     pg.wait_for_timeout(150)
-    assert pg.evaluate("() => document.documentElement.style.zoom") == "1"
+    assert abs(ui_zoom() - base) < 0.005, "Ctrl+0 应恢复默认缩放"
     ok += 1
 
     # ---- 3) 设置页表格显示默认键位 ----

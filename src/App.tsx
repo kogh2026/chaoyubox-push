@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import { APP_VERSION } from './lib/appVersion';
 import BatchPrint from './tools/BatchPrint';
 import CardLayout from './tools/CardLayout';
 import IdPhoto from './tools/IdPhoto';
 import OfficeToPdf from './tools/OfficeToPdf';
 import ImageLayout from './tools/ImageLayout';
 import BatchCard from './tools/BatchCard';
-import PdfToolbox from './tools/PdfToolbox';
 import PdfPrep from './tools/PdfPrep';
+import PdfTools from './tools/pdf/PdfTools';
 import Settings from './tools/Settings';
 import { useSettings } from './lib/appSettings';
 import {
@@ -17,6 +18,7 @@ import {
   stepZoom,
   type HotkeyAction,
 } from './lib/hotkeys';
+import { computeUiZoom } from './lib/uiScale';
 
 type Cat = 'id' | 'card' | 'print';
 
@@ -55,8 +57,10 @@ const CATS: { id: Cat | 'all'; name: string }[] = [
 
 type Route = { page: 'home' } | { page: 'tool'; id: string } | { page: 'settings'; tab?: string };
 
-function greeting(): string {
-  const h = new Date().getHours();
+const WEEK_CN = ['日', '一', '二', '三', '四', '五', '六'];
+
+function greeting(now: Date): string {
+  const h = now.getHours();
   if (h < 6) return '夜深了';
   if (h < 12) return '上午好';
   if (h < 14) return '中午好';
@@ -64,11 +68,22 @@ function greeting(): string {
   return '晚上好';
 }
 
+// 日期与星期一律按系统时间动态计算，严禁硬编码
+function todayText(now: Date): string {
+  return `${now.getMonth() + 1}月${now.getDate()}日 星期${WEEK_CN[now.getDay()]}`;
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>({ page: 'home' });
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<Cat | 'all'>('all');
   const [s, update] = useSettings();
+  // 当前时间：每 30 秒刷新一次，保证长时间开机（跨小时/跨天）问候语与日期星期保持正确
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(t);
+  }, []);
 
   useEffect(() => {
     const apply = () => {
@@ -83,9 +98,37 @@ export default function App() {
     return () => mq.removeEventListener('change', apply);
   }, [s.theme]);
 
+  // 界面缩放 = 用户手动缩放（设置/Ctrl+加减号） × 跟随窗口的自动适配系数。
+  // 根 zoom 不改变 window.innerWidth，所以按窗口尺寸反算不会形成回环；
+  // 同时把系数写进 --ui-zoom，供 CSS 里 `100vh` 换算用（见 index.css 顶部注释）。
   useEffect(() => {
-    document.documentElement.style.zoom = String(s.zoom / 100);
-  }, [s.zoom]);
+    const el = document.documentElement;
+    let raf = 0;
+    const apply = () => {
+      const z = computeUiZoom(
+        s.zoom,
+        { width: window.innerWidth, height: window.innerHeight },
+        s.autoFitZoom,
+      );
+      if (el.dataset.uiZoom !== String(z)) {
+        el.dataset.uiZoom = String(z);
+        el.style.setProperty('--ui-zoom', String(z));
+        el.style.zoom = String(z);
+      }
+    };
+    apply();
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(apply);
+    };
+    window.addEventListener('resize', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    return () => {
+      window.removeEventListener('resize', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+      cancelAnimationFrame(raf);
+    };
+  }, [s.zoom, s.autoFitZoom]);
 
   // 全局快捷键派发：按绑定表匹配；app 级动作直接执行，工具级动作派发事件
   const runAppAction = (action: HotkeyAction) => {
@@ -176,8 +219,8 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          🖨 超誉工作台<b>clone</b>
-          <span className="brand-ver">v0.5.8</span>
+          🖨 超誉工作台
+          <span className="brand-ver">v{APP_VERSION}</span>
         </div>
 
         <button className={'side-home' + (route.page === 'home' ? ' on' : '')} onClick={() => setRoute({ page: 'home' })}>
@@ -208,6 +251,18 @@ export default function App() {
               <span className="side-tool-name">{t.name}</span>
             </button>
           ))}
+        </div>
+
+        <div className="side-group">文档</div>
+        <div className="side-tools">
+          <button
+            className={'side-tool' + (route.page === 'tool' && route.id === 'pdf-toolbox' ? ' on' : '')}
+            onClick={() => setRoute({ page: 'tool', id: 'pdf-toolbox' })}
+          >
+            <span className="side-tool-ic">📔</span>
+            <span className="side-tool-name">PDF 工具箱</span>
+          </button>
+          {/* 后续新增的文档类功能继续在本分组下追加；侧栏为可滚动弹性列布局，不会与下方「系统」区重叠 */}
         </div>
 
         <div className="side-group">系统</div>
@@ -263,7 +318,7 @@ export default function App() {
             )}
 
             <h1 className="home-greet">
-              {greeting()} <small className="muted">闹五了，这周辛苦了</small>
+              {greeting(now)} <small className="muted">{todayText(now)}</small>
             </h1>
 
             <div className="home-search">
@@ -328,7 +383,7 @@ export default function App() {
               {filtered.length === 0 && <p className="muted">没有匹配的工具</p>}
             </div>
             <p className="muted home-foot">
-              Web 原型 · 批量打印/证卡拼版/证件照/图片拼版/批量制卡/Office转PDF 可用 · 设置中心与首页已对齐 v0.5.8 界面
+              Web 原型 · 批量打印/证卡拼版/证件照/图片拼版/批量制卡/Office转PDF 可用 · 设置中心与首页已对齐原版界面
             </p>
           </div>
         )}
@@ -340,7 +395,7 @@ export default function App() {
         {route.page === 'tool' && route.id === 'office-to-pdf' && <OfficeToPdf />}
         {route.page === 'tool' && route.id === 'image-layout' && <ImageLayout />}
         {route.page === 'tool' && route.id === 'batch-card' && <BatchCard />}
-        {route.page === 'tool' && route.id === 'pdf-toolbox' && <PdfToolbox />}
+        {route.page === 'tool' && route.id === 'pdf-toolbox' && <PdfTools />}
         {route.page === 'tool' && route.id === 'pdf-prep' && <PdfPrep />}
         {route.page === 'settings' && <Settings initialTab={route.tab as never} />}
       </main>

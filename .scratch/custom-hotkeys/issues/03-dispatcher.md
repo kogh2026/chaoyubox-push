@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 hotkeys 纯逻辑模块 + 单测
 
-**Status:** done (2026-10-24)
+**Status:** ready-for-agent
 
 - [ ] keydown 走绑定表匹配，命中即 preventDefault
 - [ ] search/zoom 三个动作 App 内直接执行

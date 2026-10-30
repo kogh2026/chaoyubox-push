@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   defaultPrices,
   defaultSettings,
@@ -8,6 +8,27 @@ import {
   reclassify,
   duplexUnitOf,
 } from './appSettings';
+
+/** 内存版 localStorage 桩：node 环境无浏览器存储，供 loadSettings/saveSettings 测试使用 */
+class MemStorage {
+  private m = new Map<string, string>();
+  getItem(k: string): string | null {
+    return this.m.has(k) ? (this.m.get(k) as string) : null;
+  }
+  setItem(k: string, v: string): void {
+    this.m.set(k, String(v));
+  }
+  removeItem(k: string): void {
+    this.m.delete(k);
+  }
+  clear(): void {
+    this.m.clear();
+  }
+}
+
+beforeEach(() => {
+  (globalThis as unknown as { localStorage: MemStorage }).localStorage = new MemStorage();
+});
 
 /* ===== 缝点：文件名自动识别 detectFromName()、点彩重归类 reclassify()、
    价格表→Preset 适配 priceRowOf()/presetFromPriceRow()/duplexUnitOf() ===== */
@@ -93,14 +114,13 @@ describe('priceRowOf', () => {
 });
 
 describe('presetFromPriceRow', () => {
-  it('A4 行 → bw50/dot70/color100 分，双面系数 0.8', () => {
+  it('A4 行 → bw50/dot70/color100 分，双面系数 0.8，无阶梯', () => {
     const p = presetFromPriceRow(defaultPrices()[0]);
     expect(p.bwCents).toBe(50);
     expect(p.dotCents).toBe(70);
     expect(p.colorCents).toBe(100);
     expect(p.duplexFactor).toBe(0.8); // 0.4/0.5
-    expect(p.ladderThreshold).toBe(0);
-    expect(p.ladderCents).toBe(0);
+    expect(p.ladderTiers).toEqual([]);
   });
 
   it('A2 行双面价=单面价 → 系数 1', () => {
@@ -108,7 +128,7 @@ describe('presetFromPriceRow', () => {
     expect(presetFromPriceRow(a2).duplexFactor).toBe(1);
   });
 
-  it('阶梯价透传（min→threshold，unit→cents）', () => {
+  it('阶梯价透传（多档：min→minFaces，unit→unitCents，元转分，升序）', () => {
     const p = presetFromPriceRow({
       paper: 'A4',
       bw1: 0.5,
@@ -117,10 +137,15 @@ describe('presetFromPriceRow', () => {
       dot2: 0.6,
       color1: 1,
       color2: 0.8,
-      ladder: { min: 100, unit: 0.3 },
+      ladder: [
+        { minFaces: 500, unit: 0.3 },
+        { minFaces: 100, unit: 0.4 },
+      ],
     });
-    expect(p.ladderThreshold).toBe(100);
-    expect(p.ladderCents).toBe(30);
+    expect(p.ladderTiers).toEqual([
+      { minFaces: 100, unitCents: 40 },
+      { minFaces: 500, unitCents: 30 },
+    ]);
   });
 });
 

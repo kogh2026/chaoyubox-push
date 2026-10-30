@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 hotkeys 纯逻辑模块 + 单测
 
-**Status:** done (2026-10-24)
+**Status:** ready-for-agent
 
 - [ ] 静态 SHORTCUT 数组替换为绑定表驱动的表格
 - [ ] 录制态：按键完成绑定；Esc 取消；纯修饰键拒绝
