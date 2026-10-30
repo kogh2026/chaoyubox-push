@@ -1,5 +1,5 @@
 /* 打印机枚举与打印预设映射单测 */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   listSystemPrinters,
   canListPrinters,
@@ -73,6 +73,13 @@ describe('listSystemPrinters 枚举', () => {
   const g = globalThis as unknown as { window?: { electronAPI?: unknown } };
 
   beforeEach(() => {
+    delete g.window;
+  });
+
+  // 用例体内给 globalThis 塞了假 window（无 atob/btoa），
+  // 若不清理，同 worker 后跑的测试文件（如 IdPhoto.test.ts）加载 jspdf 时
+  // 会拿到这个残缺 window 当全局对象而崩溃（atob.bind of undefined）。
+  afterEach(() => {
     delete g.window;
   });
 
