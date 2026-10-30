@@ -10,6 +10,15 @@ import {
 } from '../lib/pdfOps';
 import { sendToBatchPrint } from '../lib/handoff';
 import { useHotkeyActions } from '../lib/hotkeys';
+import {
+  saveBytes,
+  saveBlob,
+  saveBatch,
+  outcomeMessage,
+  batchMessage,
+  revealIfWanted,
+  type SaveOutcome,
+} from '../lib/exporter';
 import JSZip from 'jszip';
 
 type Tab = 'merge' | 'split' | 'rotate' | 'unify' | 'images';
@@ -26,15 +35,12 @@ async function readPdf(f: File): Promise<Uint8Array> {
   return new Uint8Array(await f.arrayBuffer());
 }
 
-function download(data: Uint8Array | Blob, name: string) {
-  // TS 5.6 下 Uint8Array<ArrayBufferLike> 与 BlobPart 的泛型不兼容，此处收窄
-  const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+// 导出统一走 exporter：桌面端 tmp + rename 原子写盘，浏览器环境回退下载。
+// 保持为纯函数不带 UI 副作用，成功/失败提示由组件内的 doSave 统一处理。
+async function download(data: Uint8Array | Blob, name: string): Promise<SaveOutcome> {
+  return data instanceof Blob
+    ? saveBlob(data, name)
+    : saveBytes(data, name, { filters: [{ name: 'PDF 文档', extensions: ['pdf'] }] });
 }
 
 function fmtSize(n: number): string {
@@ -172,12 +178,34 @@ export default function PdfPrep() {
       for (const im of imgs) zip.file(im.name, im.blob);
       const blob = await zip.generateAsync({ type: 'blob' });
       const base = one.name.replace(/\.pdf$/i, '');
-      download(blob, `${base}_图片.zip`);
-      setMsg(`转换完成：${imgs.length} 张，已打包下载`);
+      const r = await download(blob, `${base}_图片.zip`);
+      setMsg(`转换完成：${imgs.length} 张，${outcomeMessage(r)}`);
+      void revealIfWanted(r.path);
     } catch (e) {
       fail(e);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveAllSplit() {
+    const res = await saveBatch(splitOut.map((o) => ({ name: o.name, data: o.data })));
+    if (res.cancelled) {
+      setMsg('已取消保存');
+      return;
+    }
+    setMsg(batchMessage(res));
+    void revealIfWanted(res.dir ?? undefined);
+  }
+
+  // 单文件导出后给出结果反馈：桌面端报真实路径，失败报真实原因，取消不打扰
+  async function doSave(data: Uint8Array | Blob, name: string) {
+    const r = await download(data, name);
+    if (r.ok) {
+      setMsg(outcomeMessage(r));
+      void revealIfWanted(r.path);
+    } else if (r.code !== 'cancelled') {
+      setMsg(r.error || '保存失败');
     }
   }
 
@@ -250,7 +278,7 @@ export default function PdfPrep() {
               </button>
               {merged && (
                 <>
-                  <button className="btn" onClick={() => download(merged, '合并文档.pdf')}>
+                  <button className="btn" onClick={() => void doSave(merged, '合并文档.pdf')}>
                     下载
                   </button>
                   <button
@@ -308,15 +336,8 @@ export default function PdfPrep() {
                   拆分
                 </button>
                 {splitOut.length > 0 && (
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      // 错开触发：同一 tick 内多次 a.click() 会被浏览器合并成一次下载
-                      splitOut.forEach((o, i) => setTimeout(() => download(o.data, o.name), i * 350));
-                      setMsg(`正在下载 ${splitOut.length} 个文件…`);
-                    }}
-                  >
-                    全部下载
+                  <button className="btn" onClick={() => void saveAllSplit()}>
+                    全部下载（{splitOut.length}）
                   </button>
                 )}
               </div>
@@ -345,7 +366,7 @@ export default function PdfPrep() {
                   </button>
                   {singleOut && (
                     <>
-                      <button className="btn" onClick={() => download(singleOut, `${one!.name.replace(/\.pdf$/i, '')}_旋转.pdf`)}>
+                      <button className="btn" onClick={() => void doSave(singleOut, `${one!.name.replace(/\.pdf$/i, '')}_旋转.pdf`)}>
                         下载
                       </button>
                       <button
@@ -387,7 +408,7 @@ export default function PdfPrep() {
                   </button>
                   {singleOut && (
                     <>
-                      <button className="btn" onClick={() => download(singleOut, `${one!.name.replace(/\.pdf$/i, '')}_${size}.pdf`)}>
+                      <button className="btn" onClick={() => void doSave(singleOut, `${one!.name.replace(/\.pdf$/i, '')}_${size}.pdf`)}>
                         下载
                       </button>
                       <button

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>print-helper</title>
+    <style>
+      /* 打印载体页：一张图刚好一页，页边距为 0，尺寸由脚本按 PDF 页面 pt 写入 */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+      #app {
+        margin: 0;
+        padding: 0;
+      }
+      .pg {
+        display: block;
+        overflow: hidden;
+        page-break-after: always;
+        break-after: page;
+      }
+      .pg:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .pg img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/print/printHelper.ts"></script>
+  </body>
+</html>

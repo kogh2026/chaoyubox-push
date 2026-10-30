@@ -96,14 +96,20 @@ describe('writeGridPages', () => {
     expect(calls.addImage[3]).toEqual([cells[3], 'JPEG', 65, 85, 50, 70, undefined, 'FAST']);
   });
 
-  it('JPEG 失败 → 回退 PNG（无 alias/compression 参数）', () => {
+  it('JPEG 失败 → 抛出而非静默回退 PNG（A16：体积不再失控）', () => {
     const { doc, calls } = makeDocStub(true);
-    writeGridPages(doc, {
-      paper, layout: { cols: 1, rows: 1, perSheet: 1 }, itemW: 50, itemH: 70,
-      margin: 10, gap: 5, cutLines: false, pages: [[stubCanvas('a')]],
-    });
-    expect(calls.addImage).toHaveLength(1);
-    expect(calls.addImage[0]).toEqual([expect.anything(), 'PNG', 10, 10, 50, 70]);
+    let threw = false;
+    try {
+      writeGridPages(doc, {
+        paper, layout: { cols: 1, rows: 1, perSheet: 1 }, itemW: 50, itemH: 70,
+        margin: 10, gap: 5, cutLines: false, pages: [[stubCanvas('a')]],
+      });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+    // 关键：不得出现 PNG 写入（否则体积炸弹回来了）
+    expect(calls.addImage.some((a) => a[1] === 'PNG')).toBe(false);
   });
 
   it('cells 少于格子：只写有的', () => {
@@ -163,6 +169,22 @@ describe('exportSheetPdf', () => {
     exportSheetPdf({ ...base, fileName: '证件照_A4_1寸.pdf' }, () => doc);
     expect(calls.save).toEqual([['证件照_A4_1寸.pdf']]);
   });
+
+  // 方案 C：桌面端要拿字节交给主进程原子写盘，此时绝不能再调 save 触发一次下载
+  it('doc 提供 output → 返回字节且不调 save；无 output → 返回 null 并下载', () => {
+    const payload = new Uint8Array([1, 2, 3]);
+    const { doc, calls } = makeDocStub();
+    const withOutput: PdfDocLike = {
+      ...doc,
+      output: ((t: string) => (t === 'arraybuffer' ? payload.buffer : null)) as PdfDocLike['output'],
+    };
+    expect(exportSheetPdf(base, () => withOutput)).toBeInstanceOf(Uint8Array);
+    expect(calls.save).toEqual([]);
+
+    const plain = makeDocStub();
+    expect(exportSheetPdf(base, () => plain.doc)).toBeNull();
+    expect(plain.calls.save).toEqual([['证卡拼版.pdf']]);
+  });
 });
 
 /* ---------- exportGridPdf：多页网格导出 ---------- */
@@ -188,6 +210,24 @@ describe('exportGridPdf', () => {
     expect(calls.rect).toHaveLength(4); // 每页 2 格 × 2 页
     expect(calls.save).toEqual([['拼版.pdf']]);
   });
+
+  // 方案 C：有 output 时返回字节交给主进程写盘，且不重复触发下载
+  it('doc 提供 output → 返回字节且不调 save；无 output → 返回 null 并下载', () => {
+    const payload = new Uint8Array([9, 9, 9]);
+    const { doc, calls } = makeDocStub();
+    const withOutput: PdfDocLike = {
+      ...doc,
+      output: ((t: string) => (t === 'arraybuffer' ? payload.buffer : null)) as PdfDocLike['output'],
+    };
+    const out = exportGridPdf(opts, () => withOutput);
+    expect(out).toBeInstanceOf(Uint8Array);
+    expect(Array.from(out as Uint8Array)).toEqual([9, 9, 9]);
+    expect(calls.save).toEqual([]);
+
+    const plain = makeDocStub();
+    expect(exportGridPdf(opts, () => plain.doc)).toBeNull();
+    expect(plain.calls.save).toEqual([['拼版.pdf']]);
+  });
 });
 
 /* ---------- exportPagesPdf：整页逐页导出 ---------- */
@@ -197,6 +237,40 @@ describe('exportPagesPdf', () => {
     const { doc, calls } = makeDocStub();
     exportPagesPdf(210, 297, [], 'x.pdf', () => doc);
     expect(calls.save).toEqual([]);
+  });
+
+  /* ---------- 方案 C：有 output 时返回字节，且不重复触发下载 ---------- */
+
+  it('doc 提供 output → 返回字节，且不调 save（避免既写盘又下载两份）', () => {
+    const { doc, calls } = makeDocStub();
+    const payload = new Uint8Array([37, 80, 68, 70]); // %PDF
+    const docWithOutput: PdfDocLike = {
+      ...doc,
+      output: ((t: string) => (t === 'arraybuffer' ? payload.buffer : null)) as PdfDocLike['output'],
+    };
+    const out = exportPagesPdf(210, 297, [stubCanvas('p0')], 'x.pdf', () => docWithOutput);
+    expect(out).toBeInstanceOf(Uint8Array);
+    expect(Array.from(out as Uint8Array)).toEqual([37, 80, 68, 70]);
+    expect(calls.save).toEqual([]);
+  });
+
+  it('doc 无 output（纯桩）→ 返回 null 并走原来的下载行为', () => {
+    const { doc, calls } = makeDocStub();
+    const out = exportPagesPdf(210, 297, [stubCanvas('p0')], 'x.pdf', () => doc);
+    expect(out).toBeNull();
+    expect(calls.save).toEqual([['x.pdf']]);
+  });
+
+  it('output 抛异常 → 退回下载，不把异常抛给调用方', () => {
+    const { doc, calls } = makeDocStub();
+    const broken: PdfDocLike = {
+      ...doc,
+      output: (() => {
+        throw new Error('nope');
+      }) as PdfDocLike['output'],
+    };
+    expect(() => exportPagesPdf(210, 297, [stubCanvas('p0')], 'x.pdf', () => broken)).not.toThrow();
+    expect(calls.save).toEqual([['x.pdf']]);
   });
 
   it('N 页：addPage N-1 次、整页 addImage、save 自定义名', () => {

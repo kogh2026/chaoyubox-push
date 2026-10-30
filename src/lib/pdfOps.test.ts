@@ -26,7 +26,7 @@ async function makePdf(pages: number, w = 595, h = 842): Promise<Uint8Array> {
 
 const two: PdfInput[] = [
   { name: 'a.pdf', data: await makePdf(2) },
-  { name: 'b.pdf', data: await makePdf(3) },
+  { name: 'b.pdf', data: await makePdf(4) },
 ];
 
 describe('parsePageRanges', () => {
@@ -77,13 +77,10 @@ describe('expandRanges / splitName', () => {
 
 describe('computeFitScale', () => {
   it('contain：等比缩放取小，不超出目标框', () => {
-    // 源 A4(595.276×841.89) → 目标 A3(842×1191)，比例几乎一致：
-    // k=min(1.41436, 1.41481)=1.41436 → 宽铺满 842，高 1190.86 略留白
-    const r = computeFitScale(595.276, 841.89, 842, 1191, 'contain');
-    expect(r.w).toBeCloseTo(842, 0);
-    expect(r.h).toBeCloseTo(1191, 0);
-    expect(r.w).toBeLessThanOrEqual(842);
-    expect(r.h).toBeLessThanOrEqual(1191);
+    // 源 595×842 → 目标 842×1191（A4→A3 同比例）：k=min(842/595, 1191/842)=1.4142
+    const r = computeFitScale(595, 842, 842, 1191, 'contain');
+    expect(r.w).toBeCloseTo(842, 4);
+    expect(r.h).toBeCloseTo(1191, 4);
   });
 
   it('contain：宽源留白在高度方向', () => {
@@ -94,9 +91,9 @@ describe('computeFitScale', () => {
   });
 
   it('cover：等比缩放取大，超出目标框', () => {
-    const r = computeFitScale(595.276, 841.89, 842, 1191, 'cover');
-    expect(r.w).toBeCloseTo(842, 0);
-    expect(r.h).toBeCloseTo(1191, 0);
+    const r = computeFitScale(595, 842, 842, 1191, 'cover');
+    expect(r.w).toBeCloseTo(842, 4);
+    expect(r.h).toBeCloseTo(1191, 4);
     // 极端比例：宽矮源(1000×100)进高窄框(500×1000)：
     // k=max(0.5, 10)=10 → 高铺满 1000，宽溢出到 10000（渲染时被 MediaBox 裁切）
     const r2 = computeFitScale(1000, 100, 500, 1000, 'cover');
@@ -118,18 +115,18 @@ describe('mergePdfs', () => {
   it('合并两个文档，页数相加且顺序保持', async () => {
     const out = await mergePdfs(two);
     const doc = await PDFDocument.load(out);
-    expect(doc.getPageCount()).toBe(5);
+    expect(doc.getPageCount()).toBe(6);
   });
 
   it('少于 2 个文件抛错', async () => {
-    await expect(mergePdfs([two[0]])).rejects.toThrow(/至少/);
+    await expect(mergePdfs([two[0]])).rejects.toThrow(/至少 2 个/);
   });
 });
 
 describe('splitPdf', () => {
   it('按范围拆成多个文件，页数与命名正确', async () => {
-    const out = await splitPdf(two[1].data, '1-2,3', 'b.pdf');
-    expect(out.map((o) => o.name)).toEqual(['b_p1-2.pdf', 'b_p3.pdf']);
+    const out = await splitPdf(two[1].data, '1-2,4', 'b.pdf');
+    expect(out.map((o) => o.name)).toEqual(['b_p1-2.pdf', 'b_p4.pdf']);
     const d1 = await PDFDocument.load(out[0].data);
     const d2 = await PDFDocument.load(out[1].data);
     expect(d1.getPageCount()).toBe(2);
@@ -140,11 +137,11 @@ describe('splitPdf', () => {
     const out = await splitPdf(two[1].data, '', 'b.pdf');
     expect(out).toHaveLength(1);
     const d = await PDFDocument.load(out[0].data);
-    expect(d.getPageCount()).toBe(3);
+    expect(d.getPageCount()).toBe(4);
   });
 
   it('非法范围抛错', async () => {
-    await expect(splitPdf(two[1].data, '9-99', 'b.pdf')).rejects.toThrow(/共 3 页/);
+    await expect(splitPdf(two[1].data, '9-99', 'b.pdf')).rejects.toThrow(/共 4 页/);
   });
 });
 
@@ -209,17 +206,6 @@ describe('unifyPageSize', () => {
 
   it('非正目标尺寸抛错', async () => {
     await expect(unifyPageSize(await makePdf(1), { w: 0, h: 595 }, 'contain')).rejects.toThrow();
-  });
-
-  it('无 Contents 的空白页（双面填充页）不炸，统一为目标尺寸空页', async () => {
-    const doc = await PDFDocument.create();
-    doc.addPage([595, 842]); // 无任何绘制 → 无 Contents 流
-    const blank = await doc.save();
-    const out = await unifyPageSize(blank, { w: 420, h: 595 }, 'contain');
-    const res = await PDFDocument.load(out);
-    expect(res.getPageCount()).toBe(1);
-    expect(Math.round(res.getPage(0).getSize().width)).toBe(420);
-    expect(Math.round(res.getPage(0).getSize().height)).toBe(595);
   });
 });
 

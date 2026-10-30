@@ -38,6 +38,19 @@ function makeThumb(src: HTMLCanvasElement): string {
   return c.toDataURL('image/jpeg', 0.6);
 }
 
+/**
+ * 感知彩色像素判定（D10）：用 HSV 饱和度 S=(max-min)/max 替代固定 RGB 差值。
+ * 相比固定差值阈值，能正确识别「暗而饱和」（如深红）的彩色，也不会把亮而近灰的淡色当彩色
+ * （饱和度与明度解耦，更接近人眼）。
+ */
+export function isColorPixel(r: number, g: number, b: number, satThreshold = 0.25, minValue = 24): boolean {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max < minValue) return false; // 近黑：饱和度不稳定，不计
+  const s = max === 0 ? 0 : (max - min) / max; // HSV 饱和度
+  return s > satThreshold;
+}
+
 // 在一张已栅格化的 imageData 上采样，算彩色像素占比
 export function colorRatioOf(img: ImageData): number {
   const d = img.data;
@@ -46,13 +59,7 @@ export function colorRatioOf(img: ImageData): number {
   const step = Math.max(1, Math.floor(total / 4000));
   let sampled = 0;
   for (let i = 0; i < d.length; i += 4 * step) {
-    const r = d[i];
-    const g = d[i + 1];
-    const b = d[i + 2];
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const diff = max - min;
-    if (diff > 40 && max > 30) colored++;
+    if (isColorPixel(d[i], d[i + 1], d[i + 2])) colored++;
     sampled++;
   }
   return sampled === 0 ? 0 : colored / sampled;
@@ -146,19 +153,46 @@ async function analyzeImageFile(file: File): Promise<FileAnalysis> {
   };
 }
 
+/** 页栅格化目标宽度（像素）：缩略图 150px，取 132 足够分类且省一半以上像素 */
+const ANALYZE_THUMB_W = 132;
+
+/**
+ * 纯函数（可单测）：按页宽（pt）选渲染倍率，使栅格化后的宽度贴近缩略图尺寸。
+ * 以前固定 0.3，A3 页等于白算 4 倍像素；现在大页自动降倍率，小页不放大。
+ */
+export function pickScale(widthPt: number): number {
+  if (!Number.isFinite(widthPt) || widthPt <= 0) return 0.3;
+  const s = ANALYZE_THUMB_W / widthPt;
+  return Math.max(0.06, Math.min(0.35, s));
+}
+
+/** 有界并发 map（保持结果顺序）：PDF 页渲染是异步的，串行等每页会慢好几倍 */
+async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 async function analyzePdfFile(file: File): Promise<FileAnalysis> {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
   const warnings: string[] = [];
-  const perPage: PageColor[] = [];
-  const thumbs: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
+  const pages = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+
+  // 每页：低倍率栅格化 → 彩色占比 → 缩略图。并发 3 路（再多会抢 canvas 内存）
+  const rendered = await mapPool(pages, 3, async (i) => {
     const page = await pdf.getPage(i);
-    const scale = 0.3;
-    const viewport = page.getViewport({ scale });
-    // 物理尺寸（pt）→ 纸张名
     const vp1 = page.getViewport({ scale: 1 });
-    const paper = classifyPaper(vp1.width, vp1.height);
+    const scale = pickScale(vp1.width);
+    const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
@@ -166,13 +200,32 @@ async function analyzePdfFile(file: File): Promise<FileAnalysis> {
     await page.render({ canvasContext: ctx, viewport }).promise;
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const ratio = colorRatioOf(img);
-    perPage.push({ page: i, mode: classify(ratio), colorRatio: ratio, redRatio: redRatioOf(img), size: paper });
-    thumbs.push(makeThumb(canvas));
-    if (viewport.width > viewport.height) {
-      warnings.push(`第 ${i} 页为横版`);
-    }
+    return {
+      page: i,
+      mode: classify(ratio),
+      colorRatio: ratio,
+      redRatio: redRatioOf(img),
+      size: classifyPaper(vp1.width, vp1.height),
+      thumb: makeThumb(canvas),
+      landscape: vp1.width > vp1.height,
+    };
+  });
+
+  const perPage: PageColor[] = [];
+  const thumbs: string[] = [];
+  for (const r of rendered) {
+    perPage.push({ page: r.page, mode: r.mode, colorRatio: r.colorRatio, redRatio: r.redRatio, size: r.size });
+    thumbs.push(r.thumb);
+    if (r.landscape) warnings.push(`第 ${r.page} 页为横版`);
   }
-  return { name: file.name, pages: pdf.numPages, perPage, thumbs, warnings, detectedSize: dominantSize(perPage.map((p) => p.size ?? '')) };
+  return {
+    name: file.name,
+    pages: pdf.numPages,
+    perPage,
+    thumbs,
+    warnings,
+    detectedSize: dominantSize(perPage.map((p) => p.size ?? '')),
+  };
 }
 
 export async function analyzeFile(file: File): Promise<FileAnalysis> {

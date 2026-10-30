@@ -5,7 +5,10 @@ import { PDFDocument, degrees } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+// worker 仅在浏览器环境注入；node（单测）下 pdfjs 用自带 fake worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+}
 
 /* ===== 页码范围解析（纯函数） ===== */
 
@@ -69,7 +72,11 @@ export function computeFitScale(
   }
   if (mode === 'stretch') return { w: tgtW, h: tgtH };
   const k = mode === 'contain' ? Math.min(tgtW / srcW, tgtH / srcH) : Math.max(tgtW / srcW, tgtH / srcH);
-  return { w: srcW * k, h: srcH * k };
+  const w = srcW * k;
+  const h = srcH * k;
+  // A 系纸张等比换算会有 ±0.5pt 级浮点/取整误差：接近目标框时直接吸附，避免出现 841.62 这类尺寸
+  if (Math.abs(w - tgtW) <= 1 && Math.abs(h - tgtH) <= 1) return { w: tgtW, h: tgtH };
+  return { w, h };
 }
 
 /* ===== 1. 合并 ===== */
@@ -80,7 +87,7 @@ export interface PdfInput {
 }
 
 export async function mergePdfs(inputs: PdfInput[]): Promise<Uint8Array> {
-  if (inputs.length < 2) throw new Error('合并至少需要 2 个 PDF 文件');
+  if (inputs.length < 2) throw new Error('合并至少 2 个 PDF 文件');
   const out = await PDFDocument.create();
   for (const f of inputs) {
     const src = await PDFDocument.load(f.data);
