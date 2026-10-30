@@ -77,7 +77,8 @@ try:
         pg.wait_for_function("() => document.querySelectorAll('.idp-photo-card img').length > 0", timeout=180000)
         note("抠图+合成（离线资源 resources/res）", True)
 
-        pg.evaluate("() => document.querySelector('.idp-item-x[title*=\"取景微调\"]').click()")
+        # 三栏拆分后按钮类名改为 .idp-act-view（见 IdPhotoCenter.tsx 底部工具条注释）
+        pg.evaluate("() => document.querySelector('.idp-act-view[title*=\"取景微调\"]').click()")
         pg.wait_for_selector(".idp-framing-box", timeout=10000)
         note("取景微调编辑器打开", True)
 
