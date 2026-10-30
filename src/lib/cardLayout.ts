@@ -1,6 +1,8 @@
 // 证卡拼版 / 证件照排版 布局引擎（纯前端，无 ML）
 // 单位全部为毫米(mm)；图像以"cover"方式填满单元格，不变形。
 
+import type { FramingSpec } from './specFraming';
+
 export interface PaperSize {
   id: string;
   name: string;
@@ -22,17 +24,50 @@ export interface PhotoPreset {
   name: string;
   w: number;
   h: number;
+  /** 发顶留白占画幅高比例（头顶留白），复刻爱印 topRatio，默认 0.08 */
+  topRatio?: number;
+  /** 头部占比（发顶→下巴）占画幅高比例，复刻爱印 headRatio */
+  headRatio?: number;
+  /** 安全边距占画幅高比例，复刻爱印 safeRatio，默认 0.035 */
+  safeRatio?: number;
 }
 
 export const PHOTO_PRESETS: PhotoPreset[] = [
-  { id: '1cun', name: '1寸 25×35', w: 25, h: 35 },
-  { id: '2cun', name: '2寸 35×49', w: 35, h: 49 },
-  { id: 'small1', name: '小1寸 22×32', w: 22, h: 32 },
-  { id: 'small2', name: '小2寸 35×45', w: 35, h: 45 },
-  { id: 'big1', name: '大1寸 33×48', w: 33, h: 48 },
-  { id: 'passport', name: '护照 33×48', w: 33, h: 48 },
-  { id: 'drive', name: '驾照 22×32', w: 22, h: 32 },
+  { id: '1cun', name: '1寸 25×35', w: 25, h: 35, topRatio: 0.08, headRatio: 0.64, safeRatio: 0.035 },
+  { id: '2cun', name: '2寸 35×49', w: 35, h: 49, topRatio: 0.08, headRatio: 0.62, safeRatio: 0.035 },
+  { id: 'small1', name: '小1寸 22×32', w: 22, h: 32, topRatio: 0.08, headRatio: 0.62, safeRatio: 0.035 },
+  { id: 'small2', name: '小2寸 35×45', w: 35, h: 45, topRatio: 0.08, headRatio: 0.62, safeRatio: 0.035 },
+  { id: 'big1', name: '大1寸 33×48', w: 33, h: 48, topRatio: 0.08, headRatio: 0.64, safeRatio: 0.035 },
+  { id: 'passport', name: '护照 33×48', w: 33, h: 48, topRatio: 0.08, headRatio: 30.5 / 48, safeRatio: 0.03 },
+  { id: 'drive', name: '驾照 22×32', w: 22, h: 32, topRatio: 0.08, headRatio: 0.62, safeRatio: 0.035 },
 ];
+
+/** 默认 DPI（证件照排版通用） */
+export const DEFAULT_DPI = 300;
+
+/** 毫米 → 像素（@dpi） */
+export function mmToPx(mm: number, dpi: number = DEFAULT_DPI): number {
+  return Math.round((mm * dpi) / 25.4);
+}
+
+/**
+ * 由尺寸预设构造「按规格自动构图」所需的 FramingSpec（mm/px/比例）。
+ * 预设若未标注 topRatio/headRatio/safeRatio，回落到行业通用值（0.08 / 0.64 / 0.035）。
+ * 多尺寸导出时每个尺寸都独立调用本函数，得到各自规格的构图参数。
+ */
+export function framingSpecOf(p: PhotoPreset, dpi: number = DEFAULT_DPI): FramingSpec {
+  const pxW = mmToPx(p.w, dpi);
+  const pxH = mmToPx(p.h, dpi);
+  return {
+    mmW: p.w,
+    mmH: p.h,
+    pxW,
+    pxH,
+    topRatio: p.topRatio ?? 0.08,
+    headRatio: p.headRatio ?? 0.64,
+    safeRatio: p.safeRatio ?? 0.035,
+  };
+}
 
 export interface LayoutResult {
   cols: number;
