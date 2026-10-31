@@ -828,12 +828,25 @@ export function warpPixels(
   const o8 = new Uint8ClampedArray(outW * outH * 4);
   for (let y = 0; y < outH; y++) {
     for (let x = 0; x < outW; x++) {
+      const di = (y * outW + x) * 4;
       const den = H[6] * x + H[7] * y + 1;
-      if (Math.abs(den) < 1e-9) continue;
+      if (Math.abs(den) < 1e-9) {
+        // 退化输入下四边形可能轻微外溢画幅：填白而非黑（JPEG 编码无 alpha，透明会变黑）
+        o8[di] = 255;
+        o8[di + 1] = 255;
+        o8[di + 2] = 255;
+        o8[di + 3] = 255;
+        continue;
+      }
       const u = (H[0] * x + H[1] * y + H[2]) / den;
       const v = (H[3] * x + H[4] * y + H[5]) / den;
-      if (u < 0 || v < 0 || u >= sw - 1 || v >= sh - 1) continue;
-      const di = (y * outW + x) * 4;
+      if (u < 0 || v < 0 || u >= sw - 1 || v >= sh - 1) {
+        o8[di] = 255;
+        o8[di + 1] = 255;
+        o8[di + 2] = 255;
+        o8[di + 3] = 255;
+        continue;
+      }
       const x0 = u | 0;
       const y0 = v | 0;
       const fx = u - x0;

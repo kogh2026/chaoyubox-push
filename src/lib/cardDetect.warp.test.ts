@@ -47,4 +47,24 @@ describe('warpPixels', () => {
     expect(out[ci + 1]).toBe(0);
     expect(out[ci + 3]).toBe(255);
   });
+
+  it('四边形越界（角点外溢）：越界像素填白而非黑', () => {
+    const sw = 8;
+    const sh = 8;
+    const d = solid(sw, sh); // 红色源
+    // quad 比源略大，输出四角映射到源外（退化输入下角点常轻微外溢）
+    const quad: Pt[] = [
+      { x: -1, y: -1 },
+      { x: sw + 1, y: -1 },
+      { x: sw + 1, y: sh + 1 },
+      { x: -1, y: sh + 1 },
+    ];
+    const out = warpPixels(d, sw, sh, quad, 10, 10);
+    // 角点 (0,0) → 源外 → 白（非黑）
+    const ci = 0;
+    expect(out[ci]).toBe(255);
+    expect(out[ci + 1]).toBe(255);
+    expect(out[ci + 2]).toBe(255);
+    expect(out[ci + 3]).toBe(255);
+  });
 });

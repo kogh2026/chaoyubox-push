@@ -34,3 +34,7 @@ Thumbs.db
 # E2E 测试运行产物（每次跑都重新生成，不入库）
 tests/e2e/.out/
 tests/e2e/_real_card_io/
+
+# Python 字节码（曾误入库 3 个 .pyc，已 git rm --cached）
+__pycache__/
+*.pyc

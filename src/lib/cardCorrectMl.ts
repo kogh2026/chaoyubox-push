@@ -384,8 +384,17 @@ export function warpQuadToRect(t: RgbaImage, n: Pt[]): RgbaImage {
     for (let c = 0; c < o; c += 1) {
       const h = a(c / o, u);
       const f = (l * o + c) * 4;
+      if (h.x < 0 || h.y < 0 || h.x > i - 1 || h.y > r - 1) {
+        // 四边形越界（模型角点轻微外溢，模糊/退化输入常见）：填白而非黑。
+        // 下游经 JPEG 编码（无 alpha 通道）时透明会变黑，故这里直接填白，
+        // 消除退化输入下卡边出现的黑色"截断暗条"。
+        s[f] = 255;
+        s[f + 1] = 255;
+        s[f + 2] = 255;
+        s[f + 3] = 255;
+        continue;
+      }
       s[f + 3] = 255;
-      if (h.x < 0 || h.y < 0 || h.x > i - 1 || h.y > r - 1) continue;
       const d = Math.floor(h.x);
       const m = Math.floor(h.y);
       const x = Math.min(i - 1, d + 1);

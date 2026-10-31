@@ -25,7 +25,7 @@ import {
   revealIfWanted,
   type SaveOutcome,
 } from '../lib/exporter';
-import { detectCards, FULL_QUAD, warpToCorrected, type Quad } from '../lib/cardDetect';
+import { detectCards, FULL_QUAD, warpToCorrected, quadToPx, type Quad } from '../lib/cardDetect';
 import { detectCardQuadWithML } from '../lib/cardDetectMl';
 import {
   cardCorrectAvailable,
@@ -33,12 +33,13 @@ import {
   disposeCardCorrectWorker,
   type ModelCardEntry,
 } from '../lib/cardCorrectClient';
+import { bboxIoU, quadSize } from '../lib/cvGeometry';
 import { useHotkeyActions } from '../lib/hotkeys';
 import { presetPrintOpts, printPdfBytes } from '../lib/printers';
 import { disposeOcrWorker, recognizeCardType } from '../lib/cardOcr';
 import ManualCropModal from './ManualCropModal';
 
-interface CardItem {
+export interface CardItem {
   key: number;
   name: string;
   img: HTMLImageElement;
@@ -118,12 +119,72 @@ async function itemsFromModel(
   img: HTMLImageElement,
 ): Promise<CardItem[]> {
   const entries: ModelCardEntry[] = await correctImageWithModel(img);
-  return entries.map((e, i) => {
+  const items: CardItem[] = entries.map((e, i) => {
     const it = baseItem(file, objectUrl, img, e.quad, e.confidence, { i, n: entries.length });
     it.corrected = e.corrected;
-    it.auto = true; // 模型路径直接产出校正图
+    // 置信门控：低置信的模型检出不当作"已校正"，降级为"需检查"交用户复核，
+    // 避免把误检/弱检出当成成品输出（对齐爱印对不确定结果的保守处理）。
+    it.auto = e.confidence >= NEED_CHECK;
     return it;
   });
+  // 多卡补检：模型（maxPages=2）可能漏掉同图中的其余证件。用经典 CV 再扫一遍，
+  // 把模型未覆盖、且达置信阈值的卡面补进来，对齐爱印多卡/复杂版面的鲁棒性。
+  // 漏检兜底：只要模型检出过卡，就绝不静默丢弃——漏掉的卡由 CV 兜底，CV 仍漏则保留原图。
+  if (items.length > 0) {
+    try {
+      const det = detectCards(img);
+      const modelQuads = entries.map((e) => e.quad);
+      for (const c of det.cards) {
+        if (c.confidence < NEED_CHECK) continue;
+        if (modelQuads.some((mq) => bboxIoU(mq, c.quad) > 0.3)) continue;
+        const extra = baseItem(file, objectUrl, img, c.quad, c.confidence);
+        // 给补检卡面做透视矫正，使其显示/导出为规整卡面（而非整图），
+        // 让"已校正"标记名副其实；矫正失败（畸形碎片等）则保留整图，交由门控或手动兜底。
+        try {
+          const { ow, oh } = correctedSize(extra.type);
+          extra.corrected = await warpToCorrected(img, c.quad, ow, oh, { upright: true, autoFlip: true });
+        } catch {
+          /* 矫正失败：保持整图交门控/手动处理 */
+        }
+        extra.auto = c.confidence >= NEED_CHECK;
+        items.push(extra);
+      }
+    } catch {
+      /* CV 补检失败不影响主结果 */
+    }
+  }
+  // 长宽比合法性门控：模型第 2 页偶发检测、CV 补检都可能产出偏离证件比例的畸形碎片
+  //（实测误检校正后长宽比 1.3339，偏差 15.85%）。直接对【校正输出 crop】取长宽比判定，
+  // 该长宽比与导出/打印所见一致，且不受模型 768² 归一化预处理的方形拉伸影响；
+  // 真实卡面偏差普遍 <0.06，10% 阈值留足余量。门控后若一张不剩则回退 CV，绝不静默丢卡。
+  return items.filter((it) => correctedAspectDev(it) <= 0.1);
+}
+
+/** 证件标准长宽比（二代身份证 85.6mm × 54mm）。校正后 crop 的理想宽高比。 */
+const ID_CARD_ASPECT = 85.6 / 54;
+
+/**
+ * 计算一个卡面条目「卡面区域」长宽比相对证件标准的偏差（0=完美，0.1=偏离 10%）。
+ *
+ * 关键：用【真实像素 quad】的长宽比判定，而非：
+ *  - corrected.img 的尺寸：校正输出被强行压成标准卡尺寸（ow×oh，恒 ≈1.585），
+ *    任何 quad 矫正后输出都一样，无法区分畸形碎片；
+ *  - quadSizePx / 归一化 quad 的边长：归一化坐标在 768² 方形预处理或不同长宽比原图下
+ *    会被拉伸，给出的长宽比失真（实测把 1.333 的畸形碎片算成 1.585 而漏拦）。
+ *
+ * 做法：归一化 quad 反乘原图真实像素尺寸（quadToPx），再取对边均值宽高（quadSize），
+ * 得到卡面区域真实长宽比。该比值与导出所见一致、尺度无关，且模型条目与补检 extra 统一适用。
+ * 真实卡面偏差普遍 <0.06，10% 阈值留足余量；畸形碎片（如 CV 把整图当卡检出，区域 1.333）被剔除。
+ */
+export function correctedAspectDev(it: CardItem): number {
+  const W = it.img.naturalWidth;
+  const H = it.img.naturalHeight;
+  if (!W || !H) return 0; // 无尺寸退化：不拦截
+  const px = quadToPx(it.quad, W, H);
+  const { w, h } = quadSize({ p0: px[0], p1: px[1], p2: px[2], p3: px[3] });
+  if (!w || !h) return 0;
+  const asp = Math.max(w, h) / Math.min(w, h);
+  return Math.abs(1 - asp / ID_CARD_ASPECT);
 }
 
 // 按证件类型计算校正输出尺寸（长边 1100px，保持卡面比例）

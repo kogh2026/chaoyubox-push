@@ -87,6 +87,25 @@ describe('quadSizePx / warpQuadToRect', () => {
     expect(out.data[mid]).toBeGreaterThan(230);
   });
 
+  it('四边形越界（模型角点外溢）：越界像素填白而非黑', () => {
+    const sw = 20;
+    const sh = 20;
+    const img = solidImage(sw, sh, [30, 30, 30]); // 深色源
+    // quad 比源略大，输出四角映射到源外（模糊/退化输入下模型角点常轻微外溢）
+    const quad = [PX(-2, -2), PX(sw + 2, -2), PX(sw + 2, sh + 2), PX(-2, sh + 2)];
+    const out = warpQuadToRect(img, quad);
+    const corner = 0; // (0,0) → 源外
+    expect(out.data[corner]).toBe(255);
+    expect(out.data[corner + 1]).toBe(255);
+    expect(out.data[corner + 2]).toBe(255);
+    expect(out.data[corner + 3]).toBe(255);
+    // 中心映射到源内部，保持源色（深色），而非白/黑
+    const cX = Math.floor(out.width / 2);
+    const cY = Math.floor(out.height / 2);
+    const ci = (cY * out.width + cX) * 4;
+    expect(out.data[ci]).toBe(30);
+  });
+
   it('quadSizePx 按对边中点距计算（与爱印 mt 一致）', () => {
     const s = quadSizePx([PX(0, 0), PX(100, 0), PX(100, 50), PX(0, 50)]);
     expect(s.width).toBe(100);
