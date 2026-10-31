@@ -34,7 +34,14 @@
     "verify:preview": "python tools/idphoto_preview_smoke.py",
     "verify:sheet": "python tools/photo_sheet_smoke.py",
     "verify:card": "python tools/card_detect_smoke.py",
-    "verify:wiring": "node tools/panel-wiring.mjs"
+    "verify:wiring": "node tools/panel-wiring.mjs",
+    "verify:aiyin": "python tools/aiyin_compare/harness.py",
+    "verify:aiyin:selfcheck": "python tools/aiyin_compare/ci_gate.py --mode selfcheck",
+    "verify:aiyin:gate": "python tools/aiyin_compare/ci_gate.py --mode report --report .tmp/aiyin_compare/report.json --out .tmp/aiyin_gate --require-baseline",
+    "verify:aiyin:full": "python tools/aiyin_compare/ci_gate.py --mode full --out .tmp/aiyin_gate --require-baseline",
+    "verify:aiyin:parity": "python tools/aiyin_compare/verify_parity.py --limit 6",
+    "verify:aiyin:gui": "python tools/aiyin_compare/harness.py --official-adapter official_gui",
+    "aiyin:baseline": "python tools/aiyin_compare/ci_gate.py --write-baseline --report .tmp/aiyin_compare/report.json"
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",

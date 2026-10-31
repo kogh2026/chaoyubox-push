@@ -1,0 +1,9 @@
+# 像素对照 harness / 门禁的 Python 依赖（最小集）
+# 装法：python -m pip install -r tools/aiyin_compare/requirements.txt
+numpy>=1.26
+pillow>=10.0
+onnxruntime>=1.17
+
+# GUI 截图 adapter（adapter_official_gui.py）额外需要：
+#   playwright>=1.40      → python -m pip install playwright && python -m playwright install chromium
+# 不装 playwright 不影响 official_worker / official_model / ci_gate 的 selfcheck 与 report 模式。

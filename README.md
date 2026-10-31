@@ -40,6 +40,11 @@ npm run pack                 # 产物在 release/
 > 安装 Electron / electron-builder 二进制走 npmmirror 镜像（GitHub releases 本机被墙），
 > 环境变量：`ELECTRON_MIRROR`、`ELECTRON_BUILDER_BINARIES_MIRROR`。
 
+### 临时文件放哪
+所有脚本的中间件默认落仓库内 `.tmp/`（C 盘空间紧张，一轮门禁能产出数 GB），
+统一入口是 `tools/tmproot.py` / `tools/tmproot.cjs`，可用 `CHAOYU_TMP_ROOT` 覆盖。
+细节与仍留在 C 盘的大件见 [docs/dev-temp-paths.md](docs/dev-temp-paths.md)。
+
 ## 路线图
 - **Phase 1（已完成）**：Web 原型 → Electron 壳 + 真打印（灰度/份数/双面）。
 - **Phase 2（进行中）**：证卡拼版已上线；下一步证件照换底（开源 matting）、Office→PDF（LibreOffice/原生辅助）、replica-design 设计 token。

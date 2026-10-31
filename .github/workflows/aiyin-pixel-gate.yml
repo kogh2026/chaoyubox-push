@@ -1,0 +1,161 @@
+name: 像素回归门禁 (AIYIN pixel gate)
+
+# 触发条件
+#   pull_request  → 命中下面 paths 的改动才跑（含 gate 自身、卡片识别/矫正链路、模型）
+#   push(main)    → 合并后复核，防止绕过
+#   schedule      → 每夜 02:17(UTC+8 10:17) 跑一次全量（需要自托管 runner 挂数据集）
+#   workflow_dispatch → 手动全量，可选 --limit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/cardCorrect*.ts'
+      - 'src/lib/cardDetect*.ts'
+      - 'src/lib/cvGeometry*.ts'
+      - 'src/lib/specFraming.ts'
+      - 'src/tools/CardLayout.tsx'
+      - 'resources/card-model/**'
+      - 'tools/aiyin_compare/**'
+      - 'tools/bench_regress.py'
+      - '.github/workflows/aiyin-pixel-gate.yml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: '每目录最多处理多少张（0=全部；冒烟用 20）'
+        required: false
+        default: '20'
+      mode:
+        description: 'official 侧实现'
+        type: choice
+        options: ['official_model', 'official_worker', 'official_gui']
+        default: 'official_model'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aiyin-pixel-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: 'utf-8'
+
+jobs:
+  # ── 门禁 1：引擎自测（数据无关，必跑，设成 required check） ──────────────
+  engine-selfcheck:
+    name: 引擎自测 selfcheck
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: tools/aiyin_compare/requirements.txt
+
+      # 只装判定引擎需要的三个包；不装 playwright（selfcheck 不需要浏览器）
+      - name: 安装 Python 依赖
+        run: python -m pip install -r tools/aiyin_compare/requirements.txt
+
+      - name: 跑自测门禁
+        run: python tools/aiyin_compare/ci_gate.py --mode selfcheck --out .tmp/aiyin_gate_selfcheck
+
+      # 反向自测：故意注入一个"全部不一致"的假报告，门禁必须判 FAIL（防止门禁被改坏成永远 PASS）
+      - name: 验证门禁本身能拦住回归
+        run: python tools/aiyin_compare/test_gate_negative.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aiyin-selfcheck
+          path: |
+            .tmp/aiyin_gate_selfcheck/**
+          retention-days: 14
+
+  # ── 门禁 2：像素级全链路（需要测试图数据集；默认只在自托管 runner / 手动 / 夜间跑）──
+  pixel-gate:
+    name: 像素对照 pixel-gate
+    needs: engine-selfcheck
+    # 公开 runner 上没有身份证测试集，也没有 vendor worker JS；
+    # 自托管 runner 需预置：AIYIN_DATASET_DIR（含 身份证正面/反面）与 .tmp/regress/post
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'aiyin-pixel')
+    runs-on: [self-hosted, windows, aiyin]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: tools/aiyin_compare/requirements.txt
+
+      - name: 安装依赖
+        run: |
+          npm ci
+          python -m pip install -r tools/aiyin_compare/requirements.txt
+
+      - name: 确认数据集就位
+        shell: pwsh
+        run: |
+          $ds = $env:AIYIN_DATASET_DIR
+          if (-not $ds -or -not (Test-Path $ds)) {
+            Write-Error "AIYIN_DATASET_DIR 未设置或不存在：$ds"
+            exit 1
+          }
+          if (-not (Test-Path ".tmp/regress/post")) {
+            Write-Error "缺参考侧 dump：先跑 bench_regress.py --dump .tmp/regress/post"
+            exit 1
+          }
+          Write-Host "数据集：$ds"
+
+      # 执行步骤：参考侧 dump（若缺失则重建）→ harness 对照 → 门禁判定
+      - name: 跑像素对照 + 门禁
+        shell: pwsh
+        run: |
+          $limit = if ("${{ inputs.limit }}" -ne "") { "${{ inputs.limit }}" } else { "0" }
+          $mode  = if ("${{ inputs.mode }}"  -ne "") { "${{ inputs.mode }}"  } else { "official_model" }
+          python tools/aiyin_compare/ci_gate.py --mode full `
+            --out .tmp/aiyin_gate --limit $limit `
+            --official-adapter $mode `
+            --dirs "$env:AIYIN_DATASET_DIR/身份证正面" "$env:AIYIN_DATASET_DIR/身份证反面" `
+            --require-baseline
+
+      - name: 写入 Job Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $p = ".tmp/aiyin_gate/gate_summary.md"
+          if (Test-Path $p) {
+            Get-Content $p -Encoding UTF8 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Append
+          } else {
+            "门禁未产出 summary（harness 可能提前失败）" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Append
+          }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aiyin-pixel-gate
+          path: |
+            .tmp/aiyin_gate/gate_summary.md
+            .tmp/aiyin_gate/gate_result.json
+            .tmp/aiyin_gate/junit.xml
+            .tmp/aiyin_gate/report.json
+            .tmp/aiyin_gate/gallery.html
+            .tmp/aiyin_gate/side_by_side/**
+          retention-days: 30

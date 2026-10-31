@@ -1,0 +1,27 @@
+{
+  "_comment": "像素回归门禁策略。改这里等于改合并门槛，务必配 baseline.json 一起评审。",
+  "gate": {
+    "max_fail": 0,
+    "max_warn_ratio": 0.08,
+    "min_paired_ratio": 0.95,
+    "max_missing_cards": 0,
+    "max_regressed_cards": 0,
+    "drift": {
+      "_comment": "相对 baseline.json 的漂移上限。只看 fail==0 会漏掉『整体悄悄变差』：20 张从 exact 掉到 pass 时 fail 仍是 0。",
+      "avg_interior_mae_max_mult": 1.25,
+      "avg_struct_ssim_min_delta": -0.002,
+      "exact_ratio_min_delta": -0.05
+    },
+    "gui": {
+      "_comment": "仅 official_adapter=official_gui 时生效。gui_fail 表示『屏幕看到的内容 ≠ 算法产出』，属于硬缺陷。",
+      "enabled": true,
+      "max_gui_fail": 0,
+      "max_gui_warn_ratio": 0.10,
+      "min_gui_coverage_ratio": 0.95
+    }
+  },
+  "selfcheck": {
+    "_comment": "selfcheck 模式（每次提交跑）：引擎自测 + 移植版等价性。parity_limit 是抽检张数，2 张约 60s。",
+    "parity_limit": 2
+  }
+}

@@ -1,0 +1,678 @@
+{
+ "created": "2026-10-31 14:36:46",
+ "aggregate": {
+  "total": 102,
+  "paired": 102,
+  "counts_by_verdict": {
+   "exact": 71,
+   "pass": 27,
+   "warn": 4
+  },
+  "counts_by_cause": {
+   "bit_identical": 71,
+   "resampler": 30,
+   "jpeg_noise": 1
+  },
+  "avg_mae": 1.4591,
+  "avg_interior_mae": 1.4522,
+  "avg_ssim": 0.9861,
+  "avg_struct_ssim": 0.9986,
+  "avg_noise_ratio": 1.0785,
+  "bounds_white_vs_black": 2,
+  "identical_after_reencode": 71,
+  "resized_pairs": 30
+ },
+ "_records": {
+  "身份证正面|42108119890413556X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1526,
+   "interior_mae": 1.1525,
+   "struct_ssim": 0.99885
+  },
+  "身份证正面|430104198001025662.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.0628,
+   "interior_mae": 1.0672,
+   "struct_ssim": 0.99915
+  },
+  "身份证正面|430104198309010010.jpg|0": {
+   "verdict": "warn",
+   "mae": 2.0746,
+   "interior_mae": 2.0741,
+   "struct_ssim": 0.99873
+  },
+  "身份证正面|430105198108200543.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.1896,
+   "interior_mae": 0.7219,
+   "struct_ssim": 0.99902
+  },
+  "身份证正面|430105198201110542.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1897,
+   "interior_mae": 1.1846,
+   "struct_ssim": 0.99859
+  },
+  "身份证正面|430122196704020482.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.741,
+   "interior_mae": 1.7425,
+   "struct_ssim": 0.99827
+  },
+  "身份证正面|430122197202144519.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1246,
+   "interior_mae": 1.1137,
+   "struct_ssim": 0.99892
+  },
+  "身份证正面|430122197403031414.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.8847,
+   "interior_mae": 0.8636,
+   "struct_ssim": 0.99925
+  },
+  "身份证正面|430122197409281414.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.3066,
+   "interior_mae": 1.3095,
+   "struct_ssim": 0.99909
+  },
+  "身份证正面|430122198205092149.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.6756,
+   "interior_mae": 1.6776,
+   "struct_ssim": 0.99904
+  },
+  "身份证正面|430122198309031148.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.834,
+   "interior_mae": 0.8289,
+   "struct_ssim": 0.99908
+  },
+  "身份证正面|430122198311073224.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.8727,
+   "interior_mae": 0.8702,
+   "struct_ssim": 0.99874
+  },
+  "身份证正面|430122198405092821.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.3669,
+   "interior_mae": 1.3626,
+   "struct_ssim": 0.9983
+  },
+  "身份证正面|43012219850421162X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.6631,
+   "interior_mae": 1.6587,
+   "struct_ssim": 0.99877
+  },
+  "身份证正面|430122198605230045.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1525,
+   "interior_mae": 1.1442,
+   "struct_ssim": 0.99928
+  },
+  "身份证正面|430122198606190321.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.5511,
+   "interior_mae": 1.561,
+   "struct_ssim": 0.99921
+  },
+  "身份证正面|430122198801216726.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.3921,
+   "interior_mae": 1.3861,
+   "struct_ssim": 0.99791
+  },
+  "身份证正面|430122198807164517.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.7391,
+   "interior_mae": 2.7409,
+   "struct_ssim": 0.99875
+  },
+  "身份证正面|430122198906154322.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.5673,
+   "interior_mae": 1.581,
+   "struct_ssim": 0.99842
+  },
+  "身份证正面|430122199011031828.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.3299,
+   "interior_mae": 1.291,
+   "struct_ssim": 0.9985
+  },
+  "身份证正面|43012219901205188X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.2296,
+   "interior_mae": 1.2272,
+   "struct_ssim": 0.99841
+  },
+  "身份证正面|430122199412232129.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.639,
+   "interior_mae": 1.6401,
+   "struct_ssim": 0.99871
+  },
+  "身份证正面|430122199508280328.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.7372,
+   "interior_mae": 1.7236,
+   "struct_ssim": 0.99895
+  },
+  "身份证正面|430122199610081624.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.7807,
+   "interior_mae": 0.7765,
+   "struct_ssim": 0.99893
+  },
+  "身份证正面|430122199808053223.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.6843,
+   "interior_mae": 0.6974,
+   "struct_ssim": 0.99946
+  },
+  "身份证正面|430122199902090629.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.3501,
+   "interior_mae": 2.3258,
+   "struct_ssim": 0.99607
+  },
+  "身份证正面|430122199911270023.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.7309,
+   "interior_mae": 0.7267,
+   "struct_ssim": 0.99893
+  },
+  "身份证正面|430122200204174046.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.2511,
+   "interior_mae": 1.2486,
+   "struct_ssim": 0.99874
+  },
+  "身份证正面|430124198403165428.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.0389,
+   "interior_mae": 1.033,
+   "struct_ssim": 0.99797
+  },
+  "身份证正面|430406199505070524.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.9314,
+   "interior_mae": 0.9319,
+   "struct_ssim": 0.9986
+  },
+  "身份证正面|430502197602190561.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.0317,
+   "interior_mae": 1.033,
+   "struct_ssim": 0.99859
+  },
+  "身份证正面|430522199702281422.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.415,
+   "interior_mae": 2.4174,
+   "struct_ssim": 0.99828
+  },
+  "身份证正面|430526199604043522.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.7851,
+   "interior_mae": 1.7912,
+   "struct_ssim": 0.99912
+  },
+  "身份证正面|43058119950928084X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1721,
+   "interior_mae": 1.1888,
+   "struct_ssim": 0.9987
+  },
+  "身份证正面|430602197610151103.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.2166,
+   "interior_mae": 1.2039,
+   "struct_ssim": 0.99902
+  },
+  "身份证正面|430623198812196744.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.4949,
+   "interior_mae": 1.4958,
+   "struct_ssim": 0.99911
+  },
+  "身份证正面|430623199107254528.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.8368,
+   "interior_mae": 2.8588,
+   "struct_ssim": 0.9982
+  },
+  "身份证正面|430624199310016126.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.5265,
+   "interior_mae": 1.4996,
+   "struct_ssim": 0.99874
+  },
+  "身份证正面|430624200010238603.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.8049,
+   "interior_mae": 1.8073,
+   "struct_ssim": 0.99883
+  },
+  "身份证正面|430626198809245188.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.2291,
+   "interior_mae": 1.2321,
+   "struct_ssim": 0.99675
+  },
+  "身份证正面|43072619831025104X.jpg|0": {
+   "verdict": "warn",
+   "mae": 1.5704,
+   "interior_mae": 1.5761,
+   "struct_ssim": 0.99853
+  },
+  "身份证正面|430781199010023546.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.8958,
+   "interior_mae": 0.8864,
+   "struct_ssim": 0.99915
+  },
+  "身份证正面|43080219910813931X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.151,
+   "interior_mae": 1.1672,
+   "struct_ssim": 0.99843
+  },
+  "身份证正面|430821198709170624.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.7627,
+   "interior_mae": 1.7552,
+   "struct_ssim": 0.9993
+  },
+  "身份证正面|430822198107178422.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.0971,
+   "interior_mae": 1.0959,
+   "struct_ssim": 0.99892
+  },
+  "身份证正面|430921198612012641.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1056,
+   "interior_mae": 1.0998,
+   "struct_ssim": 0.99879
+  },
+  "身份证正面|430921198808177026.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.9765,
+   "interior_mae": 0.979,
+   "struct_ssim": 0.99797
+  },
+  "身份证正面|431122199209293621.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.7791,
+   "interior_mae": 0.7732,
+   "struct_ssim": 0.999
+  },
+  "身份证正面|431127198412151044.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.2533,
+   "interior_mae": 1.2503,
+   "struct_ssim": 0.99592
+  },
+  "身份证正面|432524198801051614.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.6979,
+   "interior_mae": 1.7029,
+   "struct_ssim": 0.9984
+  },
+  "身份证正面|432524199008207024.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.6374,
+   "interior_mae": 0.6267,
+   "struct_ssim": 0.99911
+  },
+  "身份证反面|42108119890413556X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1722,
+   "interior_mae": 1.1761,
+   "struct_ssim": 0.99905
+  },
+  "身份证反面|430104198001025662.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.0603,
+   "interior_mae": 1.0621,
+   "struct_ssim": 0.99913
+  },
+  "身份证反面|430104198309010010.jpg|0": {
+   "verdict": "warn",
+   "mae": 2.4927,
+   "interior_mae": 2.4935,
+   "struct_ssim": 0.99869
+  },
+  "身份证反面|430105198108200543.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.0657,
+   "interior_mae": 1.045,
+   "struct_ssim": 0.99928
+  },
+  "身份证反面|430105198201110542.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.5491,
+   "interior_mae": 1.5498,
+   "struct_ssim": 0.99877
+  },
+  "身份证反面|430122196704020482.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.4165,
+   "interior_mae": 1.4182,
+   "struct_ssim": 0.99847
+  },
+  "身份证反面|430122197202144519.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.4877,
+   "interior_mae": 1.4778,
+   "struct_ssim": 0.99898
+  },
+  "身份证反面|430122197403031414.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.8193,
+   "interior_mae": 0.8016,
+   "struct_ssim": 0.99927
+  },
+  "身份证反面|430122197409281414.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.5779,
+   "interior_mae": 1.4089,
+   "struct_ssim": 0.99921
+  },
+  "身份证反面|430122198205092149.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.9199,
+   "interior_mae": 1.9248,
+   "struct_ssim": 0.99922
+  },
+  "身份证反面|430122198309031148.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.0282,
+   "interior_mae": 1.0275,
+   "struct_ssim": 0.99903
+  },
+  "身份证反面|430122198311073224.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.2678,
+   "interior_mae": 1.2713,
+   "struct_ssim": 0.99925
+  },
+  "身份证反面|430122198405092821.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.3117,
+   "interior_mae": 1.3124,
+   "struct_ssim": 0.99828
+  },
+  "身份证反面|43012219850421162X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.8011,
+   "interior_mae": 1.8001,
+   "struct_ssim": 0.99885
+  },
+  "身份证反面|430122198605230045.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.1244,
+   "interior_mae": 1.1206,
+   "struct_ssim": 0.99915
+  },
+  "身份证反面|430122198606190321.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.3733,
+   "interior_mae": 1.3829,
+   "struct_ssim": 0.99912
+  },
+  "身份证反面|430122198801216726.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.6445,
+   "interior_mae": 1.6466,
+   "struct_ssim": 0.99802
+  },
+  "身份证反面|430122198807164517.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.0188,
+   "interior_mae": 2.0221,
+   "struct_ssim": 0.99883
+  },
+  "身份证反面|430122198906154322.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.842,
+   "interior_mae": 1.8535,
+   "struct_ssim": 0.99862
+  },
+  "身份证反面|430122199011031828.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.2674,
+   "interior_mae": 1.2385,
+   "struct_ssim": 0.99856
+  },
+  "身份证反面|43012219901205188X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.387,
+   "interior_mae": 1.3904,
+   "struct_ssim": 0.99868
+  },
+  "身份证反面|430122199412232129.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.0344,
+   "interior_mae": 2.0424,
+   "struct_ssim": 0.99895
+  },
+  "身份证反面|430122199508280328.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.3602,
+   "interior_mae": 2.3571,
+   "struct_ssim": 0.9992
+  },
+  "身份证反面|430122199610081624.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.0216,
+   "interior_mae": 1.0204,
+   "struct_ssim": 0.999
+  },
+  "身份证反面|430122199808053223.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.8108,
+   "interior_mae": 0.8199,
+   "struct_ssim": 0.99896
+  },
+  "身份证反面|430122199902090629.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.436,
+   "interior_mae": 2.4255,
+   "struct_ssim": 0.99626
+  },
+  "身份证反面|430122199911270023.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.8032,
+   "interior_mae": 0.8029,
+   "struct_ssim": 0.99897
+  },
+  "身份证反面|430122200204174046.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.5344,
+   "interior_mae": 1.5353,
+   "struct_ssim": 0.99879
+  },
+  "身份证反面|430124198403165428.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.012,
+   "interior_mae": 1.01,
+   "struct_ssim": 0.99767
+  },
+  "身份证反面|430406199505070524.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.196,
+   "interior_mae": 1.1986,
+   "struct_ssim": 0.99861
+  },
+  "身份证反面|430502197602190561.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.9796,
+   "interior_mae": 0.9793,
+   "struct_ssim": 0.99846
+  },
+  "身份证反面|430522199702281422.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.1708,
+   "interior_mae": 2.1759,
+   "struct_ssim": 0.99823
+  },
+  "身份证反面|430526199604043522.jpg|0": {
+   "verdict": "warn",
+   "mae": 3.8264,
+   "interior_mae": 3.8409,
+   "struct_ssim": 0.99928
+  },
+  "身份证反面|43058119950928084X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.184,
+   "interior_mae": 1.206,
+   "struct_ssim": 0.99855
+  },
+  "身份证反面|430602197610151103.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.1343,
+   "interior_mae": 1.126,
+   "struct_ssim": 0.99899
+  },
+  "身份证反面|430623198812196744.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.6131,
+   "interior_mae": 1.6216,
+   "struct_ssim": 0.9992
+  },
+  "身份证反面|430623199107254528.jpg|0": {
+   "verdict": "exact",
+   "mae": 2.7648,
+   "interior_mae": 2.7742,
+   "struct_ssim": 0.99803
+  },
+  "身份证反面|430624199310016126.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.7859,
+   "interior_mae": 1.7768,
+   "struct_ssim": 0.9989
+  },
+  "身份证反面|430624200010238603.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.678,
+   "interior_mae": 1.6794,
+   "struct_ssim": 0.99892
+  },
+  "身份证反面|430626198809245188.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.4238,
+   "interior_mae": 1.4321,
+   "struct_ssim": 0.99691
+  },
+  "身份证反面|43072619831025104X.jpg|0": {
+   "verdict": "pass",
+   "mae": 2.4047,
+   "interior_mae": 2.389,
+   "struct_ssim": 0.99937
+  },
+  "身份证反面|430781199010023546.jpg|0": {
+   "verdict": "pass",
+   "mae": 0.9911,
+   "interior_mae": 0.985,
+   "struct_ssim": 0.9991
+  },
+  "身份证反面|43080219910813931X.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.7932,
+   "interior_mae": 1.8177,
+   "struct_ssim": 0.99838
+  },
+  "身份证反面|430821198709170624.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.7825,
+   "interior_mae": 1.7885,
+   "struct_ssim": 0.99944
+  },
+  "身份证反面|430822198107178422.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.6227,
+   "interior_mae": 1.6284,
+   "struct_ssim": 0.99878
+  },
+  "身份证反面|430921198612012641.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.3548,
+   "interior_mae": 1.3527,
+   "struct_ssim": 0.99879
+  },
+  "身份证反面|430921198808177026.jpg|0": {
+   "verdict": "exact",
+   "mae": 0.9954,
+   "interior_mae": 1.0036,
+   "struct_ssim": 0.99797
+  },
+  "身份证反面|431122199209293621.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.2691,
+   "interior_mae": 1.2694,
+   "struct_ssim": 0.99879
+  },
+  "身份证反面|431127198412151044.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.3818,
+   "interior_mae": 1.3766,
+   "struct_ssim": 0.9959
+  },
+  "身份证反面|432524198801051614.jpg|0": {
+   "verdict": "exact",
+   "mae": 1.8435,
+   "interior_mae": 1.8499,
+   "struct_ssim": 0.99835
+  },
+  "身份证反面|432524199008207024.jpg|0": {
+   "verdict": "pass",
+   "mae": 1.3091,
+   "interior_mae": 1.3138,
+   "struct_ssim": 0.99924
+  }
+ },
+ "meta": {
+  "official_adapter": "official_worker",
+  "reference_adapter": "reference_dumps",
+  "image_dirs": [
+   "D:/50/身份证正面",
+   "D:/50/身份证反面"
+  ],
+  "target": "worker",
+  "timestamp": "2026-10-31 13:50:42",
+  "tolerance": {
+   "_comment": "噪声归因式容差。noise_ratio = 内部区域 mae / JPEG 噪声地板（<=1 表示差异完全由编码噪声解释，算法等价）；struct_ssim 为结构兜底（参考侧被 JPEG 压过，天然落在 0.998~0.9995，不能当精密尺子）；fill_frac = 越界填充口径差异占比（自研白/爱印黑）。require_native=true 的档只对'参考未被下采样'的配对生效。",
+   "exact": {
+    "max_diff": 0,
+    "fill_frac": 0.0
+   },
+   "strict": {
+    "max_diff": 12,
+    "noise_ratio": 0.9,
+    "struct_ssim": 0.999,
+    "fill_frac": 0.0005,
+    "require_native": true
+   },
+   "pass": {
+    "max_diff": 40,
+    "noise_ratio": 1.8,
+    "struct_ssim": 0.995,
+    "fill_frac": 0.02
+   },
+   "warn": {
+    "max_diff": 72,
+    "noise_ratio": 3.5,
+    "struct_ssim": 0.98,
+    "fill_frac": 0.2
+   }
+  },
+  "diff_threshold": 8,
+  "jpeg_quality": 92,
+  "official_stats": {}
+ }
+}

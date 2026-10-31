@@ -3,8 +3,8 @@
 // B 组：把同一页 PDF 用 pdfjs 渲染成 canvas 的 HTML 后 printToPDF（期望有内容 → 说明栅格打印可行）
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { tempFile } = require('./tmproot.cjs'); // 临时档落仓库 .tmp（D 盘），不占 C 盘 %TEMP%
 
 const PDF = `%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
@@ -19,8 +19,8 @@ trailer<</Root 1 0 R>>
 %%EOF
 `;
 
-const tmpPdf = path.join(os.tmpdir(), `chaoyu-v-${process.pid}.pdf`);
-const tmpHtml = path.join(os.tmpdir(), `chaoyu-v-${process.pid}.html`);
+const tmpPdf = tempFile(`chaoyu-v-${process.pid}.pdf`);
+const tmpHtml = tempFile(`chaoyu-v-${process.pid}.html`);
 fs.writeFileSync(tmpPdf, PDF, 'latin1');
 // 一个纯 DOM 的 A4 页面：若它能打出内容，说明 printToPDF 本身正常，问题只出在 PDF 插件
 fs.writeFileSync(
@@ -46,7 +46,7 @@ app.whenReady().then(async () => {
     await w.loadFile(tmpPdf);
     await new Promise((r) => setTimeout(r, 900));
     const b = await w.webContents.printToPDF({ printBackground: true });
-    fs.writeFileSync(path.join(os.tmpdir(), 'chaoyu-v-a.pdf'), b);
+    fs.writeFileSync(tempFile('chaoyu-v-a.pdf'), b);
     out.a = b.length;
     w.destroy();
   } catch (e) { out.a = 'ERR ' + String(e).slice(0, 100); }
@@ -57,7 +57,7 @@ app.whenReady().then(async () => {
     await w.loadFile(tmpHtml);
     await new Promise((r) => setTimeout(r, 400));
     const b = await w.webContents.printToPDF({ printBackground: true });
-    fs.writeFileSync(path.join(os.tmpdir(), 'chaoyu-v-b.pdf'), b);
+    fs.writeFileSync(tempFile('chaoyu-v-b.pdf'), b);
     out.b = b.length;
     w.destroy();
   } catch (e) { out.b = 'ERR ' + String(e).slice(0, 100); }

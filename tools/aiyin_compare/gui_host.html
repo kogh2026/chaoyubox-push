@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>爱印 · 卡证矫正预览</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #1b1c1e;
+    font: 13px/1.4 "Microsoft YaHei", "PingFang SC", sans-serif; color: #e8e8e8; }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  #bar { height: 36px; flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; background: #232427; border-bottom: 1px solid #303136; }
+  #bar .dot { width: 8px; height: 8px; border-radius: 50%; background: #4a4b50; }
+  #hint { opacity: .6; margin-left: auto; }
+  /* 画布用绝对定位 + JS 算整数 left/top：flex 居中会把画布放在 6.5px 这类
+     分数坐标上，元素截图必须重采样，截图与画布就永远差 mae≈2~5（实测过）。
+     绝对定位 + 整数偏移后，截图与画布逐位相同。 */
+  #stage { position: relative; flex: 1; overflow: auto; }
+  #cv { position: absolute; left: 24px; top: 24px; display: block;
+    background: #000; box-shadow: 0 2px 12px rgba(0,0,0,.6); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bar">
+    <span class="dot"></span><span>卡证矫正 · 预览</span>
+    <span id="hint">等待输入…</span>
+  </div>
+  <div id="stage"><canvas id="cv" width="8" height="8"></canvas></div>
+</div>
+<script>
+"use strict";
+/* GUI 宿主页：把爱印 vendor worker 放进**真实 Web Worker**，产出画到 <canvas>。
+ *
+ * 为什么这样算"官方 GUI"：爱印桌面端就是 Electron + 这个 worker，画布上显示的就是
+ * worker 返回的 ImageData。本页复刻的正是「worker 产出 → canvas → 屏幕」这一段，
+ * 用真实浏览器合成器/色彩管理/缩放把差异暴露出来（Node 路径没有这一段）。
+ * 官方 app 自身的 React 外壳（按钮、面板、图标）不参与像素比对，故不复刻。
+ *
+ * 对外接口（Playwright 调用）：
+ *   window.__init({modelUrl, imgUrl, maxPages, minAreaFrac, cssScale}) -> Promise<result>
+ *   window.__gui = {ready, error, result, canvasDataUrl()}
+ */
+const state = {
+  ready: false,
+  error: null,
+  result: null,
+  worker: null,
+  canvasDataUrl() { return document.getElementById("cv").toDataURL("image/png"); },
+};
+window.__gui = state;
+
+function setHint(t) { document.getElementById("hint").textContent = t; }
+
+/* 整数坐标布局：把画布摆到 stage 内的整数 left/top（能居中就居中，居中结果取整）。
+ * 分数坐标会让元素截图被迫重采样 → 截图与画布差 mae≈2~5，被误判成"上屏有损"。
+ * 视口尺寸由 adapter 按画布大小设置后再调一次。 */
+window.__snap = function () {
+  const cv = document.getElementById("cv");
+  const stage = document.getElementById("stage");
+  const cw = cv.offsetWidth, ch = cv.offsetHeight;
+  const left = Math.max(24, Math.floor((stage.clientWidth - cw) / 2));
+  const top = Math.max(24, Math.floor((stage.clientHeight - ch) / 2));
+  cv.style.left = left + "px";
+  cv.style.top = top + "px";
+  const r = cv.getBoundingClientRect();
+  return { left: r.left, top: r.top, width: r.width, height: r.height,
+           integerAligned: Number.isInteger(r.left) && Number.isInteger(r.top) };
+};
+
+window.__init = async function (opts) {
+  const { modelUrl, imgUrl, maxPages = 2, minAreaFrac = 0.04, cssScale = 1 } = opts || {};
+  state.ready = false; state.error = null; state.result = null;
+  try {
+    const cv = document.getElementById("cv");
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+
+    setHint("加载模型…");
+    const mbuf = new Uint8Array(await (await fetch(modelUrl)).arrayBuffer());
+
+    setHint("解码原图…");
+    const blob = await (await fetch(imgUrl)).blob();
+    const bmp = await createImageBitmap(blob);
+    const oc = new OffscreenCanvas(bmp.width, bmp.height);
+    const octx = oc.getContext("2d", { willReadFrequently: true });
+    octx.drawImage(bmp, 0, 0);
+    const imgData = octx.getImageData(0, 0, bmp.width, bmp.height);
+    if (bmp.close) bmp.close();
+
+    if (!state.worker) state.worker = new Worker("/vendor/card-correction-worker.js");
+    setHint("推理中…");
+    const t0 = performance.now();
+    const res = await new Promise((resolve, reject) => {
+      const wk = state.worker;
+      const timer = setTimeout(() => reject(new Error("worker 超时 (180s)")), 180000);
+      wk.onmessage = (e) => { clearTimeout(timer); resolve(e.data); };
+      wk.onerror = (e) => { clearTimeout(timer); reject(new Error("worker error: " + (e.message || e.type))); };
+      wk.postMessage({
+        id: "gui", modelId: "card-correction-fp32", modelBytes: mbuf.buffer,
+        imageData: imgData, maxPages, minAreaFrac,
+      }, [mbuf.buffer, imgData.data.buffer]);
+    });
+    if (res && (res.type === "error" || res.error)) throw new Error(res.error || "worker failed");
+    const pages = (res && res.pages) || [];
+    if (!pages.length) throw new Error("未检出卡证");
+
+    const p0 = pages[0];
+    cv.width = p0.imageData.width;
+    cv.height = p0.imageData.height;
+    // 1:1 绘制，不做 CSS 缩放（cssScale=1）；传其它值用于验证缩放链路的额外损失
+    cv.style.width = Math.round(cv.width * cssScale) + "px";
+    cv.style.height = Math.round(cv.height * cssScale) + "px";
+    cv.getContext("2d").putImageData(p0.imageData, 0, 0);
+
+    /* 设备像素对齐（关键）：居中布局会把画布放在 6.5px 这种半分像素位置，
+     * 截图时浏览器必须重采样 → 截图与画布差 mae≈2，被误判成"上屏有损"。
+     * 把 stage 平移一个不足 1 设备像素的量，让画布左上角落到整数设备像素上，
+     * 截图才与画布逐位可比。dpr=2 时按 0.5 CSS px 对齐。 */
+    const rect = window.__snap();
+    state.result = {
+      width: cv.width, height: cv.height,
+      cssWidth: rect.width, cssHeight: rect.height,
+      dpr: window.devicePixelRatio || 1,
+      cssScale, pages: pages.length,
+      score: p0.score, angle: p0.angle, uprightTurns: p0.uprightTurns,
+      inferenceMs: res.inferenceMs, modelLoadMs: res.modelLoadMs,
+      passes: res.passes, room: res.room, wallMs: performance.now() - t0,
+      srcWidth: oc.width, srcHeight: oc.height,
+    };
+    setHint(cv.width + "×" + cv.height + " · score " + (p0.score || 0).toFixed(3));
+    state.ready = true;
+    return state.result;
+  } catch (err) {
+    state.error = String((err && err.message) || err);
+    setHint("失败：" + state.error);
+    throw err;
+  }
+};
+</script>
+</body>
+</html>

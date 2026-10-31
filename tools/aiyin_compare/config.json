@@ -1,0 +1,72 @@
+{
+  "_comment": "爱印官方 GUI/worker 像素级同屏对照 harness 配置。所有路径相对项目根目录（aiyinbox-clone），或写成绝对路径。",
+  "images": {
+    "dirs": [
+      "D:/50/身份证正面",
+      "D:/50/身份证反面"
+    ],
+    "exts": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".bmp"
+    ]
+  },
+  "reference": {
+    "_comment": "对照基准 = 自研方案（CardLayout/cardCorrectMl）实际渲染输出。来源：bench_regress.py --dump 落盘的 PNG 裁图。注意：自研侧裁图经 canvas toDataURL('image/jpeg',0.92) 编码，天然带 JPEG 噪声——裁决用噪声归因，不用绝对阈值。",
+    "adapter": "reference_dumps",
+    "mode": "model",
+    "jpeg_quality": 92,
+    "dumps_dir": ".tmp/regress/post",
+    "regenerate_cmd": "python tools/bench_regress.py --dist dist --dir \"D:/50/身份证正面\" --dir \"D:/50/身份证反面\" --dump .tmp/regress/post"
+  },
+  "official": {
+    "_comment": "对照对象 = 爱印官方输出。默认 official_worker：把解密得到的 id2pdf-card-correction-worker.js 原文件在 Node 里原样执行（同 JS、同 FP32 权重、同 ort-wasm），产出逐位可信；official_model 为纯 Python 移植版（无 Node 时备用，存在亚像素移植误差）。",
+    "adapter": "official_worker",
+    "assets": {
+      "model": "resources/card-model/card-correction-fp32.onnx",
+      "vendor_worker_js": "D:/Downloads/2026-10-23-08-38-11/aiyin_decrypted_assets/vendor/id2pdf-card-correction-worker.js",
+      "ort_dir": "node_modules/onnxruntime-web/dist"
+    },
+    "max_pages": 2,
+    "min_area_frac": 0.04
+  },
+  "target": "worker",
+  "tolerance": {
+    "_comment": "噪声归因式容差。noise_ratio = 内部区域 mae / JPEG 噪声地板（<=1 表示差异完全由编码噪声解释，算法等价）；struct_ssim 为结构兜底（参考侧被 JPEG 压过，天然落在 0.998~0.9995，不能当精密尺子）；fill_frac = 越界填充口径差异占比（自研白/爱印黑）。require_native=true 的档只对'参考未被下采样'的配对生效。",
+    "exact": {
+      "max_diff": 0,
+      "fill_frac": 0.0
+    },
+    "strict": {
+      "max_diff": 12,
+      "noise_ratio": 0.9,
+      "struct_ssim": 0.999,
+      "fill_frac": 0.0005,
+      "require_native": true
+    },
+    "pass": {
+      "max_diff": 40,
+      "noise_ratio": 1.8,
+      "struct_ssim": 0.995,
+      "fill_frac": 0.02
+    },
+    "warn": {
+      "max_diff": 72,
+      "noise_ratio": 3.5,
+      "struct_ssim": 0.98,
+      "fill_frac": 0.2
+    }
+  },
+  "diff_threshold_per_channel": 8,
+  "output": {
+    "dir": ".tmp/aiyin_compare",
+    "side_by_side": true,
+    "heatmap": true,
+    "gallery_html": true,
+    "json_report": true,
+    "markdown_summary": true,
+    "run_log": true
+  }
+}

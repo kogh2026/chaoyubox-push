@@ -2,8 +2,8 @@
 // 运行：env -u ELECTRON_RUN_AS_NODE node_modules/electron/dist/electron.exe tools/printpdf.diag.cjs
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { tempFile } = require('./tmproot.cjs'); // 临时档落仓库 .tmp（D 盘）
 
 const PDF = `%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
@@ -18,7 +18,7 @@ trailer<</Root 1 0 R>>
 %%EOF
 `;
 
-const tmp = path.join(os.tmpdir(), `chaoyu-diag-${process.pid}.pdf`);
+const tmp = tempFile(`chaoyu-diag-${process.pid}.pdf`);
 fs.writeFileSync(tmp, PDF, 'latin1');
 
 setTimeout(() => {

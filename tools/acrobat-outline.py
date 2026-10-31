@@ -20,9 +20,11 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from tmproot import mkdtemp  # noqa: E402
 
 ACROBAT_CANDIDATES = [
     r"C:\Program Files (x86)\Adobe\Acrobat 2017\Acrobat\Acrobat.exe",
@@ -194,7 +196,8 @@ def cmd_run(targets: list[str], out_dir: Path, batch: int, timeout_s: int, profi
     js_dir = privileged_js_dir()
     driver = write_driver(js_dir, profile)
     out_dir.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="acrobat-outline-"))
+    # 带注入内容的 PDF 副本可能有几十 MB/份，落仓库 .tmp 而不是 C 盘 %TEMP%
+    work = mkdtemp("acrobat-outline-")
 
     print(f"Acrobat : {acrobat}")
     print(f"profile : {profile}")

@@ -18,12 +18,15 @@ import json
 import os
 import shutil
 import subprocess
-import tempfile
+import sys
 import time
 import urllib.request
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tmproot import mkdtemp  # noqa: E402
+
 OUT = os.path.join(ROOT, ".tmp", "packaged-export")
 PORT = 9368
 APP = os.path.join(ROOT, "dist-pkg-current", "win-unpacked", "超誉工作台.exe")
@@ -38,8 +41,9 @@ def note(name, ok, detail=""):
     print(("  [PASS] " if ok else "  [FAIL] ") + name + (("  " + detail) if detail else ""))
 
 
-userdata = tempfile.mkdtemp(prefix="chaoyu-export-")
-target_dir = tempfile.mkdtemp(prefix="chaoyu-export-out-")
+# 独立 userData（空 profile 就有上百 MB）与导出落盘目录都放仓库 .tmp，不占 C 盘
+userdata = str(mkdtemp("chaoyu-export-"))
+target_dir = str(mkdtemp("chaoyu-export-out-"))
 env = dict(os.environ)
 env.pop("ELECTRON_RUN_AS_NODE", None)
 proc = subprocess.Popen(

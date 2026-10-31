@@ -2,8 +2,8 @@
 // 之前这段逻辑埋在 main.cjs 里（顶部 require('electron')，Node 加载不了）根本没法验证，
 // 抽成 atomicWrite.cjs 之后终于可以跑真实用例了。
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { mkdtemp } = require('../tools/tmproot.cjs'); // 工作目录落仓库 .tmp（D 盘），不占 C 盘
 const {
   sanitizeFileName,
   listTaken,
@@ -33,7 +33,7 @@ function tmpResidues(dir) {
 }
 
 async function main() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chaoyu-atomic-'));
+  const root = mkdtemp('chaoyu-atomic-');
   console.log(`工作目录: ${root}\n`);
 
   /* ---- 1. 基本写入 ---- */

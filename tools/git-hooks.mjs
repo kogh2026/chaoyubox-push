@@ -27,6 +27,8 @@ const C = process.stdout.isTTY
 const NODE = process.execPath;
 const TSC = join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
 const VITEST = join(ROOT, 'node_modules', 'vitest', 'vitest.mjs');
+// 门禁脚本用的 Python：本机 PATH 上的 python 可能是 Store 占位符，允许用 AIYIN_PYTHON 覆盖
+const PY = process.env.AIYIN_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 
 function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', ...opts });
@@ -138,6 +140,38 @@ function uiFullStage() {
   };
 }
 
+/** 本次推送涉及的改动文件（配了 upstream 用 @{push}，否则退化为最近一次提交） */
+function pushedFiles() {
+  for (const ref of ['@{push}', 'HEAD~1']) {
+    const r = sh('git', ['diff', '--name-only', `${ref}..HEAD`]);
+    if (r.status === 0) {
+      return r.stdout
+        .split('\n')
+        .map((s) => s.trim().replace(/\\/g, '/'))
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
+// 会让「卡片识别/矫正 → 像素产出」变形的改动面
+const PIXEL_RE =
+  /^(src\/lib\/(cardCorrect|cardDetect|cvGeometry|specFraming)|src\/tools\/CardLayout\.tsx|resources\/card-model\/|tools\/aiyin_compare\/|tools\/bench_regress\.py)/;
+
+function pixelGateStage() {
+  return {
+    name: `像素回归门禁 ${C.dim}ci_gate.py --mode selfcheck（引擎自测 + 移植版等价）${C.off}`,
+    run: () => sh(PY, [join(ROOT, 'tools', 'aiyin_compare', 'ci_gate.py'),
+      '--mode', 'selfcheck', '--out', '.tmp/aiyin_gate_selfcheck'], { stdio: 'inherit' }),
+    help: [
+      '先看 .tmp/aiyin_gate_selfcheck/gate_summary.md，哪一项 FAIL 就修哪一项',
+      'lib_diff / lib_gui_diff 自测失败 → 修引擎或更新断言（别直接改阈值放水）',
+      '移植版不等价 → python tools/aiyin_compare/verify_parity.py --limit 6 定位到具体页',
+      '确认是预期变更且质量更好 → npm run aiyin:baseline（会改写 baseline.json，需单独评审）',
+    ],
+  };
+}
+
 // ── 主流程 ────────────────────────────────────────────────────────────────
 
 function main() {
@@ -155,7 +189,13 @@ function main() {
 
   if (MODE === 'pre-push') {
     // 推送前：一切照跑，构建与运行时扫描都需要
-    return runStages('pre-push 门禁（推送前，约 1 分钟）', [fullTestsStage(), uiFullStage()]);
+    const stages = [fullTestsStage(), uiFullStage()];
+    // 只有动到像素链路的改动才追加像素门禁，避免无关改动多等 1~2 分钟
+    const pushed = FORCE ? [] : pushedFiles();
+    const pixelTouched = FORCE || pushed.length === 0 || pushed.some((f) => PIXEL_RE.test(f));
+    if (pixelTouched) stages.push(pixelGateStage());
+    else console.log(`${C.dim}── 像素链路未改动，跳过像素门禁 ──${C.off}\n`);
+    return runStages('pre-push 门禁（推送前，约 1~3 分钟）', stages);
   }
 
   const stages = [];

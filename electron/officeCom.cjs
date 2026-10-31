@@ -7,6 +7,34 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 
+// PowerShell 驱动脚本的落盘目录。
+// 这是生产模块（随包发布，asar 里只有 dist/ 与 electron/，拿不到 tools/tmproot.cjs），
+// 所以解析器内联一份，顺序与 tools/tmproot.cjs 保持同一口径：
+//   1) CHAOYU_TMP_ROOT —— 显式指定（开发机把中间件都放 D 盘时设它）
+//   2) 仓库内 .tmp      —— 开发态（electron/ 在仓库里，可写）
+//   3) os.tmpdir()      —— 打包态：asar 只读、且用户机器未必有 D 盘，只能回系统临时目录
+// 注意本文件产出只有几百字节的 .ps1 且用后即删，不构成 C 盘占用问题；
+// 真正的空间大头（userData、导出中间档、浏览器）已由 tools/tmproot.* 收口到 D 盘。
+let _scratchDir = null;
+function scratchDir() {
+  if (_scratchDir) return _scratchDir;
+  const env = process.env.CHAOYU_TMP_ROOT;
+  if (env) {
+    _scratchDir = path.resolve(env);
+  } else {
+    const repo = path.join(__dirname, '..', '.tmp');
+    try {
+      fs.mkdirSync(repo, { recursive: true });
+      // asar 里 mkdir 会抛；真写一次才能确认可写
+      fs.accessSync(repo, fs.constants.W_OK);
+      _scratchDir = repo;
+    } catch {
+      _scratchDir = os.tmpdir();
+    }
+  }
+  return _scratchDir;
+}
+
 /** 扩展名 → COM 程序 + 导出方式 */
 const COM_APPS = {
   '.doc': { progId: 'Word.Application', kind: 'word' },
@@ -77,7 +105,7 @@ function buildScript(kind, input, output) {
 
 function runPowerShell(script, timeoutMs = 180000) {
   return new Promise((resolve) => {
-    const tmp = path.join(os.tmpdir(), `chaoyu-officecom-${process.pid}-${Date.now()}.ps1`);
+    const tmp = path.join(scratchDir(), `chaoyu-officecom-${process.pid}-${Date.now()}.ps1`);
     try {
       // PowerShell 5.1 读脚本按 ANSI 解码，含中文路径必须写 UTF-8 BOM
       fs.writeFileSync(tmp, '\uFEFF' + script, 'utf8');

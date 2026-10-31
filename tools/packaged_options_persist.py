@@ -12,12 +12,15 @@ import json
 import os
 import shutil
 import subprocess
-import tempfile
+import sys
 import time
 import urllib.request
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tmproot import mkdtemp  # noqa: E402
+
 OUT = os.path.join(ROOT, ".tmp", "packaged-persist")
 PORT = 9367
 APP = os.path.join(ROOT, "dist-pkg-current", "win-unpacked", "超誉工作台.exe")
@@ -37,8 +40,8 @@ def shot(pg, name):
     pg.screenshot(path=os.path.join(OUT, name))
 
 
-# 独立 userData：不污染用户真实设置，同时保证「首次无存档」
-userdata = tempfile.mkdtemp(prefix="chaoyu-persist-")
+# 独立 userData：不污染用户真实设置，同时保证「首次无存档」；放仓库 .tmp 不占 C 盘
+userdata = str(mkdtemp("chaoyu-persist-"))
 env = dict(os.environ)
 env.pop("ELECTRON_RUN_AS_NODE", None)
 proc = subprocess.Popen(

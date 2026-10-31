@@ -3,6 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const oc = require('./officeCom.cjs');
+const { tempFile } = require('../tools/tmproot.cjs'); // 仅开发态脚本，打包产物不含 tools/
 
 let pass = 0;
 let fail = 0;
@@ -37,7 +38,7 @@ t('PowerPoint 用 SaveAs(…,32)', () => assert.ok(oc.buildScript('powerpoint', 
 
 (async () => {
   console.log('=== 运行时：本机无 Office 时应安全回退 ===');
-  const out = path.join(require('os').tmpdir(), 'chaoyu-com-check.pdf');
+  const out = tempFile('chaoyu-com-check.pdf');
   const r = await oc.convertWithCom('C:\\nonexistent.docx', out);
   t('未装 Office → skipped=true（不回退错误）', () => assert.strictEqual(r.skipped, true));
   const r2 = await oc.convertWithCom('C:\\nonexistent.pdf', out);
