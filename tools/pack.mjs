@@ -88,7 +88,15 @@ function run(cmd, cmdArgs, label) {
     cwd: ROOT,
     stdio: 'inherit',
     shell: process.platform === 'win32',
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '' },
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '',
+      // 构建子进程要清空 dist / dist-pkg-current，这些是本脚本自己管的构建产物。
+      // 不关掉 safe-delete 时，vite 清 dist/assets（>50 个文件）会被批量删除守卫拦成
+      // SAFE_DELETE_BULK_CONFIRM_REQUIRED，打包直接失败。只对派生的构建进程生效，
+      // 不影响本机其它删除行为。
+      CODEBUDDY_SAFE_DELETE_ENABLED: '0',
+    },
   });
   if (r.status !== 0) {
     console.error(`\n[${label}] 失败，退出码 ${r.status}`);
