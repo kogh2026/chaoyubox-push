@@ -41,7 +41,8 @@
     "verify:aiyin:full": "python tools/aiyin_compare/ci_gate.py --mode full --out .tmp/aiyin_gate --require-baseline",
     "verify:aiyin:parity": "python tools/aiyin_compare/verify_parity.py --limit 6",
     "verify:aiyin:gui": "python tools/aiyin_compare/harness.py --official-adapter official_gui",
-    "aiyin:baseline": "python tools/aiyin_compare/ci_gate.py --write-baseline --report .tmp/aiyin_compare/report.json"
+    "aiyin:baseline": "python tools/aiyin_compare/ci_gate.py --write-baseline --report .tmp/aiyin_compare/report.json",
+    "aiyin:uplift": "python tools/aiyin_compare/uplift.py --write --json .tmp/aiyin-uplift.json"
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",

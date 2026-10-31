@@ -376,6 +376,7 @@ python tools/aiyin_compare/harness.py --official-adapter official_model
 | `gate_policy.json` | 门禁阈值（改它等于改合并门槛） |
 | `baseline.json` | 已验收基线（102 张卡的裁决与指标），漂移/降档判定的参照 |
 | `verify_parity.py` | 移植版 vs 官方 worker 等价性门禁 |
+| `uplift.py` | 从三份报告汇总「爱印 vs 之前」的提升幅度 → `docs/aiyin-uplift.md` |
 | `test_lib_diff.py` / `test_lib_gui_diff.py` / `test_gate_negative.py` | 引擎自测 / 截图判定自测 / **门禁反向自测** |
 | `config.json` | 全部可调项 |
 
