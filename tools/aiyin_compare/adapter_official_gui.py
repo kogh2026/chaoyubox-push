@@ -66,6 +66,23 @@ def _has_chromium(base: Path) -> bool:
     return False
 
 
+def adopt_tmp_env() -> None:
+    """把本进程的临时目录也改到 D 盘。
+
+    Playwright 每建一个 context 就在 `%TEMP%` 下拉一个浏览器 user-data-dir
+    （全量跑一轮能留下几十上百 MB，且浏览器异常退出时不会清）。Python 的
+    `tempfile` 与浏览器子进程都读这三个环境变量，所以在这里统一改掉，
+    并同步 `tempfile.tempdir`（它可能已被首次调用缓存过）。
+    """
+    base = tmp_root() / "tmp"
+    base.mkdir(parents=True, exist_ok=True)
+    for k in ("TMP", "TEMP", "TMPDIR"):
+        os.environ[k] = str(base)
+    import tempfile
+
+    tempfile.tempdir = str(base)
+
+
 def ensure_browser_dir(log=print) -> None:
     """把 Playwright 的浏览器目录默认收到仓库 `.tmp/ms-playwright`（D 盘）。
 
@@ -255,6 +272,7 @@ class OfficialGuiAdapter:
         result: dict[str, list[dict]] = {}
         manifest: list[dict] = []
         errors: list[dict] = []
+        adopt_tmp_env()
         ensure_browser_dir(log)
         with _Server(self._routes(img_dir)) as srv, sync_playwright() as pw:
             browser, browser_kind = self._launch_browser(pw, log)
@@ -354,6 +372,7 @@ class OfficialGuiAdapter:
         out_dir = Path(out_dir).resolve()
         shot_dir = out_dir / "gui_shot"
         shot_dir.mkdir(parents=True, exist_ok=True)
+        adopt_tmp_env()
         ensure_browser_dir(log)
         with sync_playwright() as pw:
             try:

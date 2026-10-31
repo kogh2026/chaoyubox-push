@@ -63,6 +63,9 @@ const out = tempFile('probe.pdf');
 - **Playwright** 浏览器目录由 `adapter_official_gui.py:ensure_browser_dir()` 判定：系统默认
   位置没有可用 `chrome-win*/chrome.exe` 时，自动把 `PLAYWRIGHT_BROWSERS_PATH` 指到
   `.tmp/ms-playwright`。只判"目录非空"会误判——下载中断会留下半成品目录。
+- **浏览器 profile** 由同文件的 `adopt_tmp_env()` 收口：Playwright 每建一个 context 就在
+  `%TEMP%` 下拉一个 `playwright_chromiumdev_profile-*`（浏览器异常退出不会清），
+  所以进程启动前把 `TMP/TEMP/TMPDIR` 与 `tempfile.tempdir` 一起指到 `.tmp/tmp`。
 
 ## 刻意没改的地方
 
