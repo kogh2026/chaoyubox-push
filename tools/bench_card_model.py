@@ -12,6 +12,9 @@
 用法：
   python tools/bench_card_model.py --n 20 --mode both
 输出 BENCH_CARD_MODEL_OK；报告写 .tmp/bench-card-model/report.json。
+
+注意：每次运行都覆盖同一个 report.json。小样本冒烟（--n 2）会把全量结果顶掉，
+跑 `tools/aiyin_compare/uplift.py` 生成提升幅度文档前，必须重跑一次全量。
 """
 from __future__ import annotations
 
@@ -20,12 +23,15 @@ import functools
 import http.server
 import json
 import socketserver
+import sys
 import threading
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/
+from tmproot import adopt_tmp_env  # noqa: E402
 DIST = ROOT / "dist"
 RES = ROOT / "resources"
 OUT = ROOT / ".tmp" / "bench-card-model"
@@ -141,6 +147,9 @@ def main() -> int:
         print(f"[FAIL] 目录无照片：{src}")
         return 1
     print(f"photos: {len(photos)} 张来自 {src}")
+
+    # 浏览器 profile 落仓库 .tmp（D 盘）；本基准要跑几分钟，中途被打断也不会留 C 盘残骸
+    adopt_tmp_env("bench-card-model-tmp")
 
     OUT.mkdir(parents=True, exist_ok=True)
     httpd = socketserver.TCPServer(("127.0.0.1", 0), functools.partial(Handler, directory=str(DIST)))

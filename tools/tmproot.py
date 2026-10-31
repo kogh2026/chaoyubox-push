@@ -55,6 +55,21 @@ def scratch(name: str) -> Path:
     return d
 
 
+def adopt_tmp_env(subdir: str = "tmp") -> Path:
+    """把当前进程的临时目录改到 D 盘，并同步 `tempfile.tempdir`。
+
+    给 Playwright 这类「每建一个 context 就在 %TEMP% 下拉一个浏览器 profile」的
+    工具用：正常关闭会自己清，但被 Ctrl-C / 超时中断就会留下 20~50 MB 残骸。
+    `tempfile` 会在首次调用时缓存 tempdir，所以两个地方都要改。
+    """
+    base = tmp_root() / subdir
+    base.mkdir(parents=True, exist_ok=True)
+    for k in ("TMP", "TEMP", "TMPDIR"):
+        os.environ[k] = str(base)
+    tempfile.tempdir = str(base)
+    return base
+
+
 if __name__ == "__main__":
     print(f"ROOT      = {ROOT}")
     print(f"TMP_ROOT  = {tmp_root()}")
