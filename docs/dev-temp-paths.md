@@ -74,13 +74,27 @@ const out = tempFile('probe.pdf');
 → `os.tmpdir()`（打包态兜底，用户机器未必有 D 盘）。它只写一个几百字节、用后即删的
 `.ps1`，不构成空间问题。
 
-## 还留在 C 盘的大件（需要手动搬，脚本没动）
+## 本机已落地的磁盘迁移（2026-10-31）
 
-| 路径 | 体量 | 迁移方式 |
-|---|---|---|
-| `%LOCALAPPDATA%\electron\Cache` | 255 MB | `set ELECTRON_CACHE=D:\ecache` |
-| `%LOCALAPPDATA%\electron-builder\Cache` | 28 MB | `set ELECTRON_BUILDER_CACHE=D:\ebcache` |
-| `%LOCALAPPDATA%\ms-playwright`（半成品残骸） | 22 MB | 可直接删，需重装时用上面的 `.tmp/ms-playwright` |
+C 盘一度被写到 0 字节（项目工具链整体 ENOSPC）。脚本层收口之后，又在**本机**做了一次
+缓存搬迁，全部改成**用户级环境变量**指向 D 盘，程序按原语义读取、不需要软链接：
 
-前两项设成用户级环境变量即可，`npm run pack` 会自动沿用；不设则每次打包仍读 C 盘缓存
-（命中时不下载，不会再涨，但也不会变小）。
+| 原路径 | 新路径 | 体量 | 环境变量 |
+|---|---|---|---|
+| `%LOCALAPPDATA%\electron\Cache` | `D:\caches\electron` | 255 MB | `ELECTRON_CACHE` |
+| `%LOCALAPPDATA%\electron-builder\Cache` | `D:\caches\electron-builder` | 26 MB | `ELECTRON_BUILDER_CACHE` |
+| `%LOCALAPPDATA%\ms-playwright` | `D:\caches\ms-playwright` | 22 MB | `PLAYWRIGHT_BROWSERS_PATH` |
+| 系统 `TEMP` 根 | `D:\tmp` | 1.9 GB（清理后 0.4 GB） | `TMP` / `TEMP` / `TMPDIR` |
+
+**生效时机与范围**：写在 `HKCU:\Environment`，**新开**的终端/进程继承；已运行的进程
+（含 IDE、本会话）仍用旧值，重启后统一。系统级 `HKLM` 的 `TEMP`（`C:\Windows\TEMP`）
+**没动**——服务与提权进程仍走那里，属预期。
+
+迁移后 `D:\caches\ms-playwright` 里仍是原先那份**下载中断的半成品**（无 `chrome-win*/chrome.exe`），
+所以 `adapter_official_gui.py` 仍按设计回退系统 Edge/Chrome；要真正用自带 chromium，执行
+`python -m playwright install chromium`（现在会直接下到 D 盘）。
+
+> 关于「删了但空间没释放」：本机的 safe-delete 钩子（genie-trash）会把删除动作变成
+> **移入同盘回收站**，同盘移动不产生可用空间，且是**异步**清空的。实测删除 782 MB 后
+> 立刻 `DriveInfo.AvailableFreeSpace` 几乎不变，一两分钟后回收站自行清空才真正落袋。
+> 判断空间是否释放，别只看命令返回码，要看回收站体积与延迟后的可用空间。
