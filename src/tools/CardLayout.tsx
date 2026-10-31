@@ -223,6 +223,7 @@ export default function CardLayout() {
   const [colorMode, setColorMode] = useState<ColorMode>('enhance');
   const [sat, setSat] = useState(100);
   const [sharpen, setSharpen] = useState(0);
+  const [roundMm, setRoundMm] = useState(4); // 卡片圆角半径(mm)；默认 4 ≈ 自然弧度，0 关闭
   const [wmOn, setWmOn] = useState(false);
   const [wmText, setWmText] = useState('超誉工作台');
   const [sortMode, setSortMode] = useState<'import' | 'name'>('import');
@@ -299,6 +300,7 @@ export default function CardLayout() {
       sharpen,
       wm: { on: wmOn, text: wmText },
       cropMarks,
+      cornerRadiusMm: roundMm,
     });
     // T1 预览参考线（仅预览层，绝不写入导出文件）
     if (showGuide) {
@@ -335,7 +337,7 @@ export default function CardLayout() {
         ctx.restore();
       }
     }
-  }, [paper, placements, curPageImgs, pages.length, colorMode, sat, sharpen, wmOn, wmText, cropMarks, showGuide]);
+  }, [paper, placements, curPageImgs, pages.length, colorMode, sat, sharpen, wmOn, wmText, cropMarks, showGuide, roundMm]);
 
   useEffect(() => {
     if (pageIdx > pages.length - 1) setPageIdx(Math.max(0, pages.length - 1));
@@ -522,10 +524,11 @@ export default function CardLayout() {
           sharpen,
           wm: { on: wmOn, text: wmText },
           cropMarks,
+          cornerRadiusMm: roundMm,
         });
         return cv;
       }),
-    [pages, expanded, paper, placements, colorMode, sat, sharpen, wmOn, wmText, cropMarks],
+    [pages, expanded, paper, placements, colorMode, sat, sharpen, wmOn, wmText, cropMarks, roundMm],
   );
 
   // 导出优先走矢量拼版（A2：去重 + 矢量裁切口/水印，体积更小且放大不糊）；
@@ -547,7 +550,7 @@ export default function CardLayout() {
           paper,
           placements,
           pages: vectorPages,
-          style: { colorMode, sat, sharpen, cropMarks, wm: { on: wmOn, text: wmText } },
+          style: { colorMode, sat, sharpen, cropMarks, wm: { on: wmOn, text: wmText }, cornerRadiusMm: roundMm },
           dpi: EXPORT_DPI,
         },
         fileName,
@@ -593,7 +596,7 @@ export default function CardLayout() {
           paper,
           placements,
           pages: vectorPages,
-          style: { colorMode, sat, sharpen, cropMarks, wm: { on: wmOn, text: wmText } },
+          style: { colorMode, sat, sharpen, cropMarks, wm: { on: wmOn, text: wmText }, cornerRadiusMm: roundMm },
           dpi: EXPORT_DPI,
         });
       } catch {
@@ -1129,6 +1132,18 @@ export default function CardLayout() {
               onChange={(e) => setSharpen(Number(e.target.value))}
             />
             <em>{sharpen}</em>
+          </div>
+          <div className="slider-row">
+            <span>圆角</span>
+            <input
+              type="range"
+              min={0}
+              max={8}
+              step={0.5}
+              value={roundMm}
+              onChange={(e) => setRoundMm(Number(e.target.value))}
+            />
+            <em>{roundMm === 0 ? '关' : `${roundMm}mm`}</em>
           </div>
         </div>
 

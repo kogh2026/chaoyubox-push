@@ -94,6 +94,26 @@ describe('cellFingerprint', () => {
   });
 });
 
+/* ===== 圆角半径影响去重键（保证改圆角会重新编码） ===== */
+describe('圆角半径影响去重键', () => {
+  it('cellFingerprint 含半径：同图不同半径 → 不同键', () => {
+    const a = cellFingerprint(cell('blob:x'), 100, 140, 'f', 0);
+    const b = cellFingerprint(cell('blob:x'), 100, 140, 'f', 4);
+    expect(a).not.toBe(b);
+    expect(a).toContain('r0');
+    expect(b).toContain('r4');
+  });
+
+  it('planVectorPages：style.cornerRadiusMm 改变指纹 → 同一张图不同圆角的唯一数按各自计', () => {
+    const c = cell('blob:same');
+    const plan0 = planVectorPages([[c, c]], placements, 300, { ...style, cornerRadiusMm: 0 });
+    const plan4 = planVectorPages([[c, c]], placements, 300, { ...style, cornerRadiusMm: 4 });
+    expect(plan0.uniqueImages).toBe(1);
+    expect(plan4.uniqueImages).toBe(1);
+    expect(plan0.items[0].fingerprint).not.toBe(plan4.items[0].fingerprint);
+  });
+});
+
 /* ===== planVectorPages ===== */
 
 describe('planVectorPages', () => {

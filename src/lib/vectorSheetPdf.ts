@@ -2,7 +2,13 @@
 // 裁切口与水印走矢量绘制 —— 放大不糊、体积显著小于整页位图。
 // 整页位图路径（sheetPdf.exportPagesPdf）保留为预览与兜底。
 import { PDFDocument, rgb } from 'pdf-lib';
-import { colorFilter, coverDraw, type ColorMode, type Placement } from './idCardLayout';
+import {
+  colorFilter,
+  coverDraw,
+  roundRectPath,
+  type ColorMode,
+  type Placement,
+} from './idCardLayout';
 import { embedCjkFont } from './cjkFont';
 import { saveBytes, type SaveOutcome } from './exporter';
 
@@ -19,13 +25,20 @@ export interface VectorSheetStyle {
   sharpen: number;
   cropMarks?: boolean; // 蚂蚁线裁切口（与预览同源）
   wm?: { on: boolean; text: string };
+  cornerRadiusMm?: number; // 卡片圆角半径（mm）；undefined 由渲染端按自然比例处理
 }
 
-/** 单元格编码签名：同源图 + 同风格 + 同输出像素尺寸 → 复用同一份 JPEG（去重依据） */
-export function cellFingerprint(c: VectorCell, pxW: number, pxH: number, filter: string): string {
+/** 单元格编码签名：同源图 + 同风格 + 同输出像素尺寸 + 同圆角 → 复用同一份 JPEG（去重依据） */
+export function cellFingerprint(
+  c: VectorCell,
+  pxW: number,
+  pxH: number,
+  filter: string,
+  radiusMm = 0,
+): string {
   const img = c.img as HTMLImageElement & { currentSrc?: string };
   const src = img.currentSrc || img.src || '';
-  return `${src}|${c.rotation}|${Math.round(pxW)}x${Math.round(pxH)}|${filter}`;
+  return `${src}|${c.rotation}|${Math.round(pxW)}x${Math.round(pxH)}|${filter}|r${Math.round(radiusMm * 100) / 100}`;
 }
 
 export interface VectorPlanItem {
@@ -51,6 +64,7 @@ export function planVectorPages(
   style?: VectorSheetStyle,
 ): VectorPlan {
   const filter = style ? colorFilter(style.colorMode, style.sat, style.sharpen) : '';
+  const radiusMm = style?.cornerRadiusMm ?? 0;
   const items: VectorPlanItem[] = [];
   const seen = new Set<string>();
   pages.forEach((cells, pi) => {
@@ -59,7 +73,7 @@ export function planVectorPages(
       if (!rect || !cell || !cell.img) return;
       const pxW = (rect.w / 25.4) * dpi;
       const pxH = (rect.h / 25.4) * dpi;
-      const fp = cellFingerprint(cell, pxW, pxH, filter);
+      const fp = cellFingerprint(cell, pxW, pxH, filter, radiusMm);
       if (!seen.has(fp)) seen.add(fp);
       items.push({ page: pi, cell: ci, rect, fingerprint: fp, pxW, pxH });
     });
@@ -128,17 +142,18 @@ export const pdfLibVectorDoc: VectorDocFactory = async () => {
   };
 };
 
-/** 单元格编码器：把一张卡（含旋转/滤镜）编码为 JPEG 字节。可注入以便无 canvas 环境测试。 */
+/** 单元格编码器：把一张卡（含旋转/滤镜/圆角）编码为 JPEG 字节。可注入以便无 canvas 环境测试。 */
 export type EncodeCell = (
   cell: VectorCell,
   pxW: number,
   pxH: number,
   filter: string,
   quality: number,
+  radiusPx?: number,
 ) => Promise<Uint8Array>;
 
 // 默认实现：与预览同源，用 coverDraw 保证「所见即所得」
-const defaultEncodeCell: EncodeCell = async (cell, pxW, pxH, filter, quality) => {
+const defaultEncodeCell: EncodeCell = async (cell, pxW, pxH, filter, quality, radiusPx = 0) => {
   if (typeof document === 'undefined') throw new Error('矢量导出需要浏览器画布环境');
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(pxW));
@@ -148,18 +163,14 @@ const defaultEncodeCell: EncodeCell = async (cell, pxW, pxH, filter, quality) =>
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const img = cell.img;
-  coverDraw(
-    ctx,
-    img,
-    img.naturalWidth,
-    img.naturalHeight,
-    cell.rotation,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-    filter,
-  );
+  ctx.save();
+  if (radiusPx > 0.5) {
+    const r = Math.min(radiusPx, canvas.width / 2, canvas.height / 2);
+    roundRectPath(ctx, 0, 0, canvas.width, canvas.height, r);
+    ctx.clip();
+  }
+  coverDraw(ctx, img, img.naturalWidth, img.naturalHeight, cell.rotation, 0, 0, canvas.width, canvas.height, filter);
+  ctx.restore();
   const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', quality));
   canvas.width = 0; // 及时释放
   canvas.height = 0;
@@ -213,10 +224,18 @@ export async function exportVectorSheetPdf(o: VectorSheetOpts): Promise<Uint8Arr
 
       const pxW = (rect.w / 25.4) * dpi;
       const pxH = (rect.h / 25.4) * dpi;
-      const fp = cellFingerprint(cell, pxW, pxH, filter);
+      const radiusPx = (o.style.cornerRadiusMm ?? 0) * (dpi / 25.4);
+      const fp = cellFingerprint(cell, pxW, pxH, filter, o.style.cornerRadiusMm ?? 0);
       let img = cache.get(fp);
       if (img === undefined) {
-        const bytes = await (o.encodeCell ?? defaultEncodeCell)(cell, pxW, pxH, filter, quality);
+        const bytes = await (o.encodeCell ?? defaultEncodeCell)(
+          cell,
+          pxW,
+          pxH,
+          filter,
+          quality,
+          radiusPx,
+        );
         img = await doc.embedJpg(bytes);
         cache.set(fp, img);
       }

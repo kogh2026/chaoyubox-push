@@ -1,7 +1,7 @@
 {
   "name": "chaoyu-gongzuotai",
   "private": true,
-  "version": "0.0.11",
+  "version": "0.0.12",
   "type": "module",
   "description": "超誉工作台 — 桌面工具箱（批量打印 / 证卡拼版），Electron + Vite + React",
   "main": "electron/main.cjs",

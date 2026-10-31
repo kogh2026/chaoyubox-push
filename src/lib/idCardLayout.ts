@@ -234,6 +234,49 @@ export interface PageStyle {
   sharpen: number; // -15..15 锐度
   wm: WmCfg;
   cropMarks?: boolean; // 蚂蚁线裁切口（导出/预览同源，远离卡边）
+  /**
+   * 卡片圆角半径（mm）。undefined = 按卡片短边自然比例自动（CARD_CORNER_FACTOR），
+   * 保证"必备且默认生效"；显式传 0 可关闭直角输出。
+   */
+  cornerRadiusMm?: number;
+}
+
+/**
+ * 卡片圆角：短边占比（爱印参考效果的自然弧度）。
+ * 身份证 54mm 短边 → 约 4.3mm，肉眼可见且不过分。
+ */
+export const CARD_CORNER_FACTOR = 0.08;
+
+/**
+ * 计算卡片圆角半径（mm）：undefined 走自然比例（保证默认生效），
+ * 显式数值（含 0）直接采用（0 = 直角）。纯函数便于单测。
+ */
+export function cardCornerRadiusMm(wMm: number, hMm: number, override?: number): number {
+  if (override !== undefined) return Math.max(0, override);
+  return Math.min(wMm, hMm) * CARD_CORNER_FACTOR;
+}
+
+/** 在 2D 上下文上描出圆角矩形路径（兼容真实 CanvasRenderingContext2D）。 */
+export function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  if (rr <= 0) {
+    ctx.rect(x, y, w, h);
+    return;
+  }
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
 }
 
 // 渲染一页到 canvas（预览与导出共用）
@@ -256,18 +299,20 @@ export function renderCardPage(
   placements.forEach((p, i) => {
     const im = images[i];
     if (!im) return;
-    coverDraw(
-      ctx,
-      im.img,
-      im.img.naturalWidth,
-      im.img.naturalHeight,
-      im.rotation,
-      p.x * pxPerMm,
-      p.y * pxPerMm,
-      p.w * pxPerMm,
-      p.h * pxPerMm,
-      filter,
-    );
+    const rMm = cardCornerRadiusMm(p.w, p.h, style.cornerRadiusMm);
+    const px = pxPerMm;
+    const x = p.x * px;
+    const y = p.y * px;
+    const w = p.w * px;
+    const h = p.h * px;
+    const rPx = Math.min(rMm * px, w / 2, h / 2);
+    ctx.save();
+    if (rPx > 0.5) {
+      roundRectPath(ctx, x, y, w, h, rPx);
+      ctx.clip();
+    }
+    coverDraw(ctx, im.img, im.img.naturalWidth, im.img.naturalHeight, im.rotation, x, y, w, h, filter);
+    ctx.restore();
   });
 
   if (style.wm.on && style.wm.text.trim()) {
