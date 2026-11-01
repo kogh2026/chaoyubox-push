@@ -88,7 +88,8 @@
         "from": "resources",
         "to": "res",
         "filter": [
-          "**/*"
+          "**/*",
+          "!matting-model/recon_isnet_fp16.onnx"
         ]
       }
     ],

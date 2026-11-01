@@ -3,6 +3,7 @@ node_modules/
 
 # 构建产物
 dist/
+dist-electron/
 out/
 build-out/
 release/
@@ -22,6 +23,11 @@ Thumbs.db
 # UI 回归检查（Impeccable）：基线要提交，报告和个人覆盖配置不进库
 .impeccable/reports/
 .impeccable/config.local.json
+
+# 预装运行时资源（由 tools/build-resources.mjs 重建，不入库）
+# 含 onnxruntime wasm / tesseract / @imgly 抠图切片模型 / 卡证模型等，约 322MB。
+# 全新克隆后执行 `node tools/build-resources.mjs --all` 即可重建，无需进版本库。
+resources/
 
 # 临时产物 / 一次性探针（.characterization 是基线，要提交）
 .tmp/
