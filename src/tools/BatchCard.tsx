@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeyActions } from '../lib/hotkeys';
 import { presetPrintOpts, printPdfBytes } from '../lib/printers';
-import * as XLSX from 'xlsx';
 import { PAPER_SIZES, computeLayout, type PaperSize } from '../lib/cardLayout';
 import { exportGridPdf, renderGridPage } from '../lib/gridExport';
 import { saveBytes, outcomeMessage, revealIfWanted, type SaveOutcome } from '../lib/exporter';
@@ -165,10 +164,12 @@ export default function BatchCard() {
     setRecords(parseText(text));
   }
 
-  function handleXlsx(file: File) {
+  async function handleXlsx(file: File) {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        // xlsx 仅用于 Excel 批量导入，体积不小；改成「用户点导入时才加载」，不进主包、不随启动加载
+        const XLSX = await import('xlsx');
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];

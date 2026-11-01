@@ -47,6 +47,20 @@ export default defineConfig({
         // 独立入口而不是塞进主应用路由 —— 载体页不该跑整个 React 应用（状态恢复、更新检查等）。
         printHelper: 'printHelper.html',
       },
+      output: {
+        // 代码分割：把「只在渲染进程(main/printHelper)使用、从不进 Worker」的重型库拆成独立 chunk。
+        // 好处：主包变小、vendor 可独立缓存；这些库仍随启动加载，但不再挤进主包。
+        // 注意：绝不把 Worker 专属库(onnxruntime-web / @imgly 在 matting.worker)抽成共享块，
+        // 否则 Worker 解析共享块会失败。xlsx / tesseract 已改动态 import，由 vite 自动分块，这里不强制。
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('pdf-lib')) return 'vendor-pdf-lib';
+          if (id.includes('pdfjs-dist')) return 'vendor-pdfjs';
+          if (id.includes('jspdf')) return 'vendor-jspdf';
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'vendor-react';
+          return undefined;
+        },
+      },
     },
   },
 });
