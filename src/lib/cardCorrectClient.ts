@@ -3,6 +3,7 @@
 // 模型不可用（浏览器预览无资源根 / 加载失败 / 未检出卡面）时由调用方回退经典 CV。
 import type { Quad } from './cardDetect';
 import type { CardCorrectPageMsg, CardCorrectResponse } from './cardCorrect.worker';
+import { IdleUnloader } from './idleUnload';
 
 function resBase(): string | undefined {
   const base =
@@ -23,21 +24,50 @@ let worker: Worker | null = null;
 let seq = 0;
 const pending = new Map<number, { resolve: (r: SuccessResp) => void; reject: (e: Error) => void }>();
 
+// 测试可覆盖的 Worker 工厂：生产默认 new Worker(new URL('./cardCorrect.worker.ts', import.meta.url))。
+// 单测通过 __setWorkerFactoryForTest 注入 mock Worker，从而直接驱动真实客户端协议逻辑
+// （ensureWorker / killWorker / 超时 / dispose），无需改动协议本体。
+let makeWorkerImpl: () => Worker = () =>
+  new Worker(new URL('./cardCorrect.worker.ts', import.meta.url), { type: 'module' });
+/** 仅供单元测试注入 mock Worker；生产代码不应调用。 */
+export function __setWorkerFactoryForTest(fn: () => Worker): void {
+  makeWorkerImpl = fn;
+}
+
 type SuccessResp = Extract<CardCorrectResponse, { type: 'success' }>;
 /** 与爱印一致的单请求超时（rF=120s）：ort wasm 偶发挂死时销毁 Worker 重来 */
 const REQUEST_TIMEOUT_MS = 120_000;
+/**
+ * 空闲卸载阈值：最后一次推理完成后再过这么久没有任何请求，就 terminate Worker 释放
+ * 41MB 模型 + wasm 常驻内存。避免长任务间歇期（用户看预览/排版）白白占内存，
+ * 也避免「活跃工作集」只增不减。下次请求 ensureWorker 会懒加载重建（首次加载约数百 ms）。
+ */
+const IDLE_UNLOAD_MS = 90_000;
+
+// 空闲卸载器：默认 onIdle = 释放 Worker；测试可注入 scheduler 与回调
+let idleUnloader: IdleUnloader | null = null;
+function getUnloader(): IdleUnloader {
+  if (!idleUnloader) {
+    idleUnloader = new IdleUnloader(() => killWorker('card-correct-idle-unload'), IDLE_UNLOAD_MS);
+  }
+  return idleUnloader;
+}
 
 function killWorker(reason: string): void {
   worker?.terminate();
   worker = null;
   for (const [, p] of pending) p.reject(new Error(reason));
   pending.clear();
+  idleUnloader?.clear();
 }
 
 function ensureWorker(): Worker | null {
-  if (worker) return worker;
+  if (worker) {
+    getUnloader().clear(); // 复用已有 Worker：取消空闲倒计时
+    return worker;
+  }
   try {
-    worker = new Worker(new URL('./cardCorrect.worker.ts', import.meta.url), { type: 'module' });
+    worker = makeWorkerImpl();
     worker.onmessage = (e: MessageEvent<CardCorrectResponse>) => {
       const msg = e.data;
       const p = pending.get(msg.id);
@@ -88,10 +118,12 @@ export function correctImageRaw(
     pending.set(id, {
       resolve: (r) => {
         clearTimeout(timer);
+        getUnloader().touch(); // 推理完成 → 重置空闲倒计时
         resolve({ pages: r.pages, passes: r.passes, room: r.room });
       },
       reject: (e) => {
         clearTimeout(timer);
+        getUnloader().touch(); // 即使失败也计空闲（异常不应阻止释放模型）
         reject(e);
       },
     });

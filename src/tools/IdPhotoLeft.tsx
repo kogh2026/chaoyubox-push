@@ -1,5 +1,6 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { ISSUE_LABEL, type PhotoIssue } from '../lib/photoInspect';
+import type { BoundedCache } from '../lib/boundedCache';
 import type { PhotoItem } from './idphotoTypes';
 
 /**
@@ -27,7 +28,7 @@ export interface IdPhotoLeftProps {
   addFiles: (list: FileList | null) => void;
   removeItem: (id: string) => void;
   /** 抠图结果缓存：面板只读，用 has() 判断「已处理」角标 */
-  matteCache: { readonly current: Map<string, Blob> };
+  matteCache: { readonly current: BoundedCache<string, Blob> };
   /** 逐张的合成错误 / 异常检测结果，用于角标与 title 提示 */
   errors: Record<string, string>;
   issues: Record<string, PhotoIssue[]>;

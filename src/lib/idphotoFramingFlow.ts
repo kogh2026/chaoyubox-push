@@ -103,9 +103,16 @@ export async function measureFrame<S>(
  * 阶段 ①②（批量 + 缓存）：逐张补测，写进调用方持有的 `cache`（in/out 参数，非组件状态）。
  * 已缓存的跳过；每 `yieldEvery` 张让一帧，避免长批把主线程占死。
  */
+/** 构图输入缓存「最小接口」：ensureFrames/planPlacements 只用 has/get/set。 */
+export interface FramingCacheLike {
+  has(key: string): boolean;
+  get(key: string): FramingFrame | undefined;
+  set(key: string, value: FramingFrame): unknown;
+}
+
 export async function ensureFrames<S>(
   targets: readonly FramingTarget[],
-  cache: Map<string, FramingFrame>,
+  cache: FramingCacheLike,
   deps: FramingDeps<S>,
   options: EnsureFramesOptions = {},
 ): Promise<EnsureFramesOutcome> {
@@ -212,7 +219,7 @@ export interface FramingPlan {
  */
 export async function planPlacements<S>(
   targets: readonly FramingTarget[],
-  cache: Map<string, FramingFrame>,
+  cache: FramingCacheLike,
   input: FramingPlanInput,
   deps: FramingDeps<S>,
 ): Promise<FramingPlan> {

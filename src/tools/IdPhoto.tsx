@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BoundedCache } from '../lib/boundedCache';
 import { useHotkeyActions } from '../lib/hotkeys';
 import { presetPrintOpts, printPdfBytes } from '../lib/printers';
 import {
@@ -303,13 +304,21 @@ export default function IdPhoto() {
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
-  /** 抠图结果按 id 缓存：规格/底色变化无需重跑模型 */
-  const matteCache = useRef<Map<string, Blob>>(new Map());
   /**
    * 人物层缓存（第 5 轮批量提速）：键 = id|匀肤参数|像素级参数指纹。
    * 换底色/换纸张/改排版都只重新合层，不再重做去晕边/阈值/美白等逐像素运算。
+   * 改用 BoundedCache：批量上百张时把人物层内存钉在 256 条上限内（LRU 淘汰），
+   * 避免长任务内存随照片数线性增长。
    */
-  const layerCache = useRef<Map<string, PersonLayer>>(new Map());
+  const layerCache = useRef(new BoundedCache<string, PersonLayer>(256));
+  /**
+   * 抠图结果按 id 缓存：规格/底色变化无需重跑模型。
+   * 同样带上限（128 条）：抠图 Blob 每张数百 KB~数 MB，长任务不能无限累积。
+   * onEvict 级联删掉该照片的人物层（层依赖这张抠图，抠图被淘汰层也没用了）。
+   */
+  const matteCache = useRef(
+    new BoundedCache<string, Blob>(128, (k) => layerCache.current.deletePrefix(`${k}|`)),
+  );
   /** 已有成品的 id 集合（与 results 同步的 ref）：合成前用它判断「这张还缺成品」，避免重算整批 */
   const resultIds = useRef<Set<string>>(new Set());
   /** 影响成品的参数指纹：没变就只补缺的照片（抠图逐张完成时的高频路径） */
@@ -317,8 +326,9 @@ export default function IdPhoto() {
   /**
    * 每张照片的「构图输入」缓存：人脸几何 + 下半身分割结果。
    * 自动构图、批量默认构图、多尺寸导出都复用，避免重复跑人脸检测与分割（一次/张）。
+   * 改 BoundedCache（96 条上限）：FramingFrame 含人脸/分割浮点数组，长任务不可无限增长。
    */
-  const frameData = useRef<Map<string, FramingFrame>>(new Map());
+  const frameData = useRef(new BoundedCache<string, FramingFrame>(96));
   const [mattesVer, setMattesVer] = useState(0);
   /** 预览缩略图（演示卡）直接用演示照片资源 URL，无需重绘 */
   const demoThumbs = useMemo(() => DEMO_URLS, []);
@@ -477,9 +487,8 @@ export default function IdPhoto() {
       return n;
     });
     matteCache.current.delete(id);
-    for (const k of Array.from(layerCache.current.keys())) {
-      if (k.startsWith(`${id}|`)) layerCache.current.delete(k);
-    }
+    layerCache.current.deletePrefix(`${id}|`);
+    frameData.current.delete(id);
     inspected.current.delete(id);
     setIssues((prev) => {
       const n = { ...prev };

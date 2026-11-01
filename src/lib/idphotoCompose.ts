@@ -13,6 +13,19 @@
 
 import type { PersonLayer, Placement, RetouchOpts } from './matting';
 
+/**
+ * 人物层缓存「最小接口」：compose 只用 get/set/size/keys/delete，不要求它是真 Map。
+ * 调用方（`IdPhoto.tsx`）传的是 {@link BoundedCache}（带上限与 LRU 淘汰），
+ * 既满足本接口，又能把长任务（批量上百张）里的人物层内存钉死在天花板内。
+ */
+export interface LayerCacheLike {
+  get(key: string): PersonLayer | undefined;
+  set(key: string, value: PersonLayer): unknown;
+  delete(key: string): boolean;
+  readonly size: number;
+  keys(): IterableIterator<string>;
+}
+
 /** 参与合成的一张照片 */
 export interface ComposeItem {
   id: string;
@@ -90,7 +103,7 @@ export interface ComposeDeps<A, R extends { blob: Blob }> {
     retouchSig: string,
   ) => string;
   /** 人物层缓存（组件持有 ref，跨调用复用） */
-  layerCache: Map<string, PersonLayer>;
+  layerCache: LayerCacheLike;
   /** 缓存条数上限，默认 120 */
   maxLayers?: number;
   /**
