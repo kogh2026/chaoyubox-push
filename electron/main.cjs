@@ -42,6 +42,124 @@ function appResRoot() {
   return path.join(__dirname, '..', 'resources');
 }
 
+// ---- 应用临时根（启动体检 + 一键清理到 D 盘） ----
+// 默认用系统 temp；用户可在「维护」面板把根迁到 D 盘，持久化到 userData 小文件，
+// 之后所有应用临时写盘（Office 输出、自检、缓存）都落到该盘，C 盘不再被撑爆。
+const APP_TEMP_ROOT_FILE = path.join(app.getPath('userData'), 'appTempRoot.json');
+const CHAOYU_PREFIX = 'chaoyu';
+const CACHE_DIR_NAME = 'chaoyu-cache';
+
+function readAppTempRoot() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(APP_TEMP_ROOT_FILE, 'utf-8'));
+    if (raw && typeof raw.root === 'string' && raw.root) return raw.root;
+  } catch {
+    /* 未配置或文件损坏 → 回退系统 temp */
+  }
+  return null;
+}
+
+function writeAppTempRoot(root) {
+  try {
+    fs.mkdirSync(path.dirname(APP_TEMP_ROOT_FILE), { recursive: true });
+    fs.writeFileSync(APP_TEMP_ROOT_FILE, JSON.stringify({ root: root || null }), 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 应用临时根：迁到 D 盘就返回 D 盘路径，否则系统 temp */
+function appTempDir() {
+  const root = readAppTempRoot();
+  if (root) {
+    try {
+      fs.mkdirSync(root, { recursive: true });
+      return root;
+    } catch {
+      /* 迁移目标不可写 → 回退系统 temp */
+    }
+  }
+  return app.getPath('temp');
+}
+
+/** 递归统计一个目录/文件的总字节数与条目数（不跟随符号链接） */
+function measure(p) {
+  let bytes = 0;
+  let files = 0;
+  try {
+    const st = fs.statSync(p);
+    if (st.isFile()) return { bytes: st.size, files: 1 };
+    const stack = [p];
+    while (stack.length) {
+      const dir = stack.pop();
+      let entries = [];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const e of entries) {
+        const fp = path.join(dir, e.name);
+        try {
+          if (e.isDirectory()) {
+            files += 1;
+            stack.push(fp);
+          } else if (e.isFile()) {
+            bytes += fs.statSync(fp).size;
+            files += 1;
+          }
+        } catch {
+          /* 权限/竞态：跳过 */
+        }
+      }
+    }
+  } catch {
+    /* 不存在 */
+  }
+  return { bytes, files };
+}
+
+/** 仅统计应用自有条目（chaoyu-* 与 chaoyu-cache），绝不碰系统 temp 里的其他程序文件 */
+function measureOwnedTemp(root) {
+  let bytes = 0;
+  let files = 0;
+  let entries = [];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return { bytes, files };
+  }
+  for (const e of entries) {
+    if (!e.name.startsWith(CHAOYU_PREFIX) && e.name !== CACHE_DIR_NAME) continue;
+    const r = measure(path.join(root, e.name));
+    bytes += r.bytes;
+    files += r.files + 1;
+  }
+  return { bytes, files };
+}
+
+// 模型清单（与主进程独立，避免依赖打包后不存在的 src/ JSON）：与 healthPolicy.json 的 models 同步维护。
+const HEALTH_MODELS = [
+  { id: 'card-correction-fp32', rel: 'card-model/card-correction-fp32.onnx', critical: true, minBytes: 40000000, label: '卡证矫正 FP32（增强识别）' },
+  { id: 'ort-wasm', rel: 'ort/ort-wasm-simd-threaded.wasm', critical: true, minBytes: 10000000, label: 'onnxruntime WASM' },
+  { id: 'matting', rel: 'matting-model', critical: true, minBytes: 1000000, label: '抠图模型' },
+  { id: 'mediapipe', rel: 'mediapipe-vision', critical: false, minBytes: 1000000, label: '人脸关键点模型' },
+  { id: 'seg', rel: 'seg-model', critical: false, minBytes: 1000000, label: '下半身分割模型' },
+  { id: 'tesseract', rel: 'tesseract', critical: false, minBytes: 1000000, label: 'OCR 语言包' },
+];
+
+function diskFreeBytes(root) {
+  try {
+    // Node 18.19+ 全平台支持 statfsSync；老版本/异常时回退为「未知（视为充足）」
+    const st = fs.statfsSync(root);
+    const free = (st.bavail ?? st.bfree) * (st.bsize ?? 1);
+    return Number.isFinite(free) ? free : Number.MAX_SAFE_INTEGER;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
 /** 渲染层（打包后的 dist）根目录：生产态由 app:// 协议承载（开发态走 vite dev server） */
 function distRoot() {
   return path.join(__dirname, '..', 'dist');
@@ -128,7 +246,7 @@ ipcMain.handle('check-office', async (_e, sofficePath) => {
 
 ipcMain.handle('convert-office', async (_e, { files, sofficePath }) => {
   const soffice = findSoffice(sofficePath);
-  const outDir = path.join(app.getPath('temp'), 'chaoyu-office-out');
+  const outDir = path.join(appTempDir(), 'chaoyu-office-out');
   fs.mkdirSync(outDir, { recursive: true });
   const results = [];
   for (const f of files) {
@@ -776,11 +894,88 @@ app.whenReady().then(() => {
     }
   });
 
+  // ---- 启动体检：探针采集（fs 只在主进程跑） ----
+  ipcMain.handle('health-probe', async () => {
+    const root = appTempDir();
+    const temp = measureOwnedTemp(root);
+    const cachePath = path.join(root, CACHE_DIR_NAME);
+    const cache = measure(cachePath);
+    const resRoot = appResRoot();
+    const models = HEALTH_MODELS.map((m) => {
+      const fp = path.join(resRoot, m.rel);
+      let exists = false;
+      let bytes = 0;
+      try {
+        const st = fs.statSync(fp);
+        exists = true;
+        bytes = st.isDirectory() ? measure(fp).bytes : st.size;
+      } catch {
+        exists = false;
+      }
+      return { id: m.id, rel: m.rel, label: m.label, critical: m.critical, exists, bytes };
+    });
+    return {
+      tempRoot: root,
+      tempBytes: temp.bytes,
+      tempFiles: temp.files,
+      cacheBytes: cache.bytes,
+      cacheFiles: cache.files,
+      diskFreeBytes: diskFreeBytes(root),
+      resRoot,
+      models,
+    };
+  });
+
+  // ---- 启动体检：一键清理应用自有临时/缓存（只动 chaoyu-* 与 chaoyu-cache，绝不碰系统 temp 其他程序） ----
+  ipcMain.handle('health-cleanup', async () => {
+    const root = appTempDir();
+    const removed = [];
+    let freed = 0;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+      return { freedBytes: 0, removed: [] };
+    }
+    for (const e of entries) {
+      if (!e.name.startsWith(CHAOYU_PREFIX) && e.name !== CACHE_DIR_NAME) continue;
+      const fp = path.join(root, e.name);
+      const m = measure(fp);
+      try {
+        fs.rmSync(fp, { recursive: true, force: true });
+        freed += m.bytes;
+        removed.push({ name: e.name, bytes: m.bytes });
+      } catch {
+        /* 占用中（如 Office 正在写）跳过，不影响其余 */
+      }
+    }
+    return { freedBytes: freed, removed };
+  });
+
+  // ---- 应用临时根「迁移到 D 盘」：读/写持久化小文件 ----
+  ipcMain.handle('get-app-temp-root', async () => ({ root: readAppTempRoot() || '' }));
+  ipcMain.handle('set-app-temp-root', async (_e, root) => {
+    const r = typeof root === 'string' ? root.trim() : '';
+    if (!r) {
+      const ok = writeAppTempRoot('');
+      return { ok, root: '', effective: appTempDir() };
+    }
+    // 校验：绝对路径且父目录可建
+    if (!path.isAbsolute(r)) return { ok: false, error: '必须是绝对路径', root: '', effective: appTempDir() };
+    try {
+      fs.mkdirSync(r, { recursive: true });
+    } catch {
+      return { ok: false, error: '目录不可创建/写入', root: '', effective: appTempDir() };
+    }
+    const ok = writeAppTempRoot(r);
+    return { ok, root: r, effective: appTempDir() };
+  });
+
   // 启动自检（CHAOYU_SELFTEST_THREAD=1 时）：加载真实 app://index.html，
   // 验证 ①crossOriginIsolated 生效（线程）②React 是否挂载（无白屏）③资源加载正常。
   // 结果写临时文件后退出。仅改造验收用，正常启动不触发。
   if (process.env.CHAOYU_SELFTEST_THREAD === '1') {
-    const log = path.join(app.getPath('temp'), 'chaoyu-thread-selftest.json');
+    const log = path.join(appTempDir(), 'chaoyu-thread-selftest.json');
     (async () => {
       try {
         const w = new BrowserWindow({

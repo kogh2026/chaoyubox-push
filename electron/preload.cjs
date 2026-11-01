@@ -42,4 +42,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printHelperReady: (info) => ipcRenderer.invoke('print-helper-ready', info),
   // 本地预装资源根（P0-B）：渲染进程用它覆盖 @imgly/Tesseract 的资源地址，离线可用
   appResBase: 'appres://res/',
+  // 启动体检（运行环境健康度）：探针采集 + 一键清理 + 临时根迁移到 D 盘
+  healthProbe: () => ipcRenderer.invoke('health-probe'),
+  healthCleanup: () => ipcRenderer.invoke('health-cleanup'),
+  getAppTempRoot: () => ipcRenderer.invoke('get-app-temp-root'),
+  setAppTempRoot: (root) => ipcRenderer.invoke('set-app-temp-root', root),
 });

@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "comment": "启动体检策略：阈值单位与 ci_gate 同思路（阈值→ok/warn/fail 三档），但领域换成运行环境健康度。改阈值后须评审。",
+  "bytesInGb": 1073741824,
+  "thresholds": {
+    "temp": { "warnGb": 1.0, "failGb": 4.0, "comment": "应用自有临时目录（chaoyu-*）体积" },
+    "cache": { "warnGb": 0.5, "failGb": 2.0, "comment": "应用缓存目录（chaoyu-cache）体积" },
+    "diskFree": { "warnGb": 5.0, "failGb": 2.0, "comment": "临时所在盘可用空间（C 盘紧张时重点）" }
+  },
+  "models": [
+    {
+      "id": "card-correction-fp32",
+      "rel": "card-model/card-correction-fp32.onnx",
+      "critical": true,
+      "minBytes": 40000000,
+      "label": "卡证矫正 FP32（增强识别）"
+    },
+    {
+      "id": "ort-wasm",
+      "rel": "ort/ort-wasm-simd-threaded.wasm",
+      "critical": true,
+      "minBytes": 10000000,
+      "label": "onnxruntime WASM"
+    },
+    {
+      "id": "matting",
+      "rel": "matting-model",
+      "critical": true,
+      "minBytes": 1000000,
+      "label": "抠图模型"
+    },
+    {
+      "id": "mediapipe",
+      "rel": "mediapipe-vision",
+      "critical": false,
+      "minBytes": 1000000,
+      "label": "人脸关键点模型"
+    },
+    {
+      "id": "seg",
+      "rel": "seg-model",
+      "critical": false,
+      "minBytes": 1000000,
+      "label": "下半身分割模型"
+    },
+    {
+      "id": "tesseract",
+      "rel": "tesseract",
+      "critical": false,
+      "minBytes": 1000000,
+      "label": "OCR 语言包"
+    }
+  ]
+}

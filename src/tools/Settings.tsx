@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import { useSettings, type PriceRow, type PrinterPreset, type AppSettings } from '../lib/appSettings';
 import { canListPrinters, listSystemPrinters, type SysPrinter } from '../lib/printers';
 import { pickSaveDir, canSaveToDisk } from '../lib/exporter';
+import HealthPanel from './HealthPanel';
 import {
   DEFAULT_BINDINGS,
   HOTKEY_ACTIONS,
@@ -24,6 +25,7 @@ type Tab =
   | 'print-preset'
   | 'shortcut'
   | 'lab'
+  | 'maintenance'
   | 'about';
 
 const NAV: { group: string; items: { id: Tab; name: string; icon: string }[] }[] = [
@@ -43,7 +45,7 @@ const NAV: { group: string; items: { id: Tab; name: string; icon: string }[] }[]
       { id: 'shortcut', name: '快捷键', icon: '⌨' },
     ],
   },
-  { group: '', items: [{ id: 'lab', name: '实验功能', icon: '🧪' }, { id: 'about', name: '关于', icon: 'ⓘ' }] },
+  { group: '', items: [{ id: 'lab', name: '实验功能', icon: '🧪' }, { id: 'maintenance', name: '维护', icon: '🩺' }, { id: 'about', name: '关于', icon: 'ⓘ' }] },
 ];
 
 export default function Settings({ initialTab }: { initialTab?: Tab }) {
@@ -78,6 +80,7 @@ export default function Settings({ initialTab }: { initialTab?: Tab }) {
         {tab === 'print-preset' && <PrintPresetPage s={s} update={update} />}
         {tab === 'shortcut' && <ShortcutPage />}
         {tab === 'lab' && <LabPage s={s} update={update} />}
+        {tab === 'maintenance' && <HealthPanel embedded />}
         {tab === 'about' && <AboutPage />}
       </section>
     </div>

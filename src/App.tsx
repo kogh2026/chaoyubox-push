@@ -19,6 +19,8 @@ import {
   type HotkeyAction,
 } from './lib/hotkeys';
 import { computeUiZoom } from './lib/uiScale';
+import { evaluateHealth, STATUS_COLOR, STATUS_LABEL, type HealthReport } from './lib/healthCheck';
+import { probeHealth } from './lib/healthIpc';
 
 type Cat = 'id' | 'card' | 'print';
 
@@ -83,6 +85,19 @@ export default function App() {
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 30000);
     return () => window.clearInterval(t);
+  }, []);
+
+  // 启动体检：仅在桌面版（有桥）跑一次，结论非「健康」时弹出可关闭的横幅。
+  const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
+  const [healthDismissed, setHealthDismissed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void probeHealth().then((p) => {
+      if (alive && p) setHealthReport(evaluateHealth(p));
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -279,6 +294,34 @@ export default function App() {
       </aside>
 
       <main className="main">
+        {healthReport && healthReport.overall !== 'ok' && !healthDismissed && (
+          <div
+            className="health-banner"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 14px',
+              margin: '0 0 12px',
+              borderRadius: 8,
+              border: `1px solid ${STATUS_COLOR[healthReport.overall] === 'green' ? '#16a34a' : STATUS_COLOR[healthReport.overall] === 'yellow' ? '#d97706' : '#dc2626'}`,
+              background: STATUS_COLOR[healthReport.overall] === 'yellow' ? '#fffbeb' : '#fef2f2',
+            }}
+          >
+            <span style={{ fontWeight: 600, color: STATUS_COLOR[healthReport.overall] === 'green' ? '#16a34a' : STATUS_COLOR[healthReport.overall] === 'yellow' ? '#d97706' : '#dc2626' }}>
+              {STATUS_LABEL[healthReport.overall]}：运行环境体检提示
+            </span>
+            <span style={{ flex: 1, fontSize: 13, color: '#444' }}>
+              {healthReport.items.filter((i) => i.severity !== 'ok').map((i) => i.label).join('、')} 异常，建议前往「设置 → 维护」查看并清理。
+            </span>
+            <button className="btn" onClick={() => setRoute({ page: 'settings', tab: 'maintenance' })}>
+              去处理
+            </button>
+            <button className="link" onClick={() => setHealthDismissed(true)}>
+              忽略
+            </button>
+          </div>
+        )}
         {route.page === 'home' && (
           <div className="home">
             {/* 开始前设置一下 */}
