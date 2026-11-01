@@ -20,6 +20,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // 全局垫片：兜底 atob/btoa 等 Node 全局，防止 jspdf 等库在相关测试聚合时偶发崩溃
+    setupFiles: ['./vitest.setup.ts'],
     // 单线程：多 worker 并发写同一 SSR 缓存文件会被 fs shim 拦（EPERM），
     // 且失败时会静默少收测试文件（假绿）。155 个用例顺序跑也只 1-2 秒。
     pool: 'threads',
