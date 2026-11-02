@@ -132,8 +132,11 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .ph-check { position: absolute; top: 8px; left: 8px; z-index: 2; }
 .ph-badge { position: absolute; top: 6px; right: 8px; font-size: 10px; color: var(--muted); background: #f1f3f6; border-radius: 6px; padding: 1px 6px; }
 .ph-card.on .ph-badge { color: var(--brand); background: #e7f0ff; }
-.ph-imgbox { position: relative; margin-top: 20px; background: repeating-conic-gradient(#f3f4f6 0 25%, #fff 0 50%) 0 0/14px 14px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 84px; }
-.ph-imgbox img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform .15s; }
+/* 渐进预览的"识别中"态：中性灰，不误报"需检查" */
+.ph-card .ph-badge.busy { color: var(--muted); background: #eef1f5; }
+.ph-badge .spinner { width: 9px; height: 9px; border-width: 1.5px; margin-right: 4px; vertical-align: -1px; }
+.ph-imgbox { position: relative; margin-top: 20px; background: repeating-conic-gradient(#f3f4f6 0 25%, #fff 0 50%) 0 0/14px 14px; border-radius: 12px / 9px; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 84px; animation: phBoxIn var(--t-slow) var(--ease) both; }
+.ph-imgbox img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform .15s var(--ease); animation: phImgIn .4s var(--ease) both; }
 .ph-ratio { position: absolute; bottom: 2px; right: 4px; font-size: 9px; color: #fff; background: rgba(0,0,0,.45); border-radius: 4px; padding: 0 4px; }
 .ph-type { width: 100%; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
 /* P1-B 证件类型识别状态行 */
@@ -923,10 +926,13 @@ kbd { font-family: inherit; background: #f1f3f5; border: 1px solid var(--line); 
 @keyframes cyFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes cyZoom { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes cySpin { to { transform: rotate(360deg); } }
+/* 缩略图加载过渡：容器圆角从 3px 平滑 morph 为椭圆 12/9，整体淡入；图片本体淡入（不动 transform，避免与旋转冲突） */
+@keyframes phBoxIn { from { opacity: 0; border-radius: 3px; } to { opacity: 1; border-radius: 12px / 9px; } }
+@keyframes phImgIn { from { opacity: 0; } to { opacity: 1; } }
 .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: cySpin .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
 .spinner.dark { border-color: rgba(0,0,0,.2); border-top-color: var(--brand); }
 @media (prefers-reduced-motion: reduce) {
-  .bp-modal, .bp-modal-card, .mc-overlay, .mc-dialog { animation: none; }
+  .bp-modal, .bp-modal-card, .mc-overlay, .mc-dialog, .ph-imgbox, .ph-imgbox img { animation: none; }
 }
 
 /* ===== 启动体检横幅（随深色主题） ===== */

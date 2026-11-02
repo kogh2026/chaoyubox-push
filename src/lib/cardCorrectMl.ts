@@ -88,6 +88,8 @@ const STD = [0.289, 0.274, 0.278]; // _：BGR 标准差
 const ROOM_MIN = 0.3; // $：首卡贴边余量下限（低于则不再循环）
 const DEFAULT_MAX_PAGES = 2; // 爱印 oF=2
 const DEFAULT_MIN_AREA_FRAC = 0.04; // 爱印 aF=.04
+/** 自动校正内缩比例：裁掉卡边外残留暗边（与 cardDetect.EDGE_TRIM_FRAC 同思路，仅增强模型自动路径生效） */
+const ML_EDGE_TRIM = 0.008;
 
 // ---------- 几何：单应（F） ----------
 
@@ -372,10 +374,18 @@ export function quadSizePx(n: Pt[]): { width: number; height: number } {
 }
 
 /** 按四角把源图重采样成矩形（双线性，越界填透明黑） */
-export function warpQuadToRect(t: RgbaImage, n: Pt[]): RgbaImage {
-  const { height: e, width: o } = quadSizePx(n);
+export function warpQuadToRect(t: RgbaImage, n: Pt[], edgeTrim = 0): RgbaImage {
+  // 自动校正内缩：把四角朝质心收进 edgeTrim，裁掉卡边外残留暗边（增强模型自动路径）
+  let corners = n;
+  if (edgeTrim > 0) {
+    const cx = (n[0].x + n[1].x + n[2].x + n[3].x) / 4;
+    const cy = (n[0].y + n[1].y + n[2].y + n[3].y) / 4;
+    const k = 1 - edgeTrim;
+    corners = n.map((p) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }));
+  }
+  const { height: e, width: o } = quadSizePx(corners);
   if (o < 1 || e < 1) throw new Error('Card crop collapsed to an empty rectangle.');
-  const a = homographyFromCorners(n);
+  const a = homographyFromCorners(corners);
   const s = new Uint8ClampedArray(o * e * 4);
   const i = t.width;
   const r = t.height;
@@ -500,7 +510,7 @@ export async function modelCorrectLoop(
     const decoded = decodeModelOutput(out, frame, th);
     const next = acceptNextCandidate(decoded, accepted, { frameArea, minAreaFrac });
     if (!next) break;
-    const warped = warpQuadToRect(source, next.corners);
+    const warped = warpQuadToRect(source, next.corners, ML_EDGE_TRIM);
     const image = rotateImageQuarter(warped, next.angle);
     pages.push({
       angle: next.angle,

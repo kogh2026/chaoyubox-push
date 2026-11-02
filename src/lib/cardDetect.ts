@@ -67,6 +67,25 @@ export const FULL_QUAD: Quad = {
 
 const FALLBACK: DetectResult = { quad: FULL_QUAD, confidence: 0.4 };
 
+/**
+ * 自动校正默认内缩比例（0.8%）：把检测/模型得到的四边形四角朝质心收进一小段，
+ * 裁掉卡边外残留的一圈原背景——深色背景下就表现为"小黑边"。
+ * 纯几何、按比例收敛，不改变长宽比，故不影响下游"长宽比门控"。
+ */
+export const EDGE_TRIM_FRAC = 0.008;
+
+/**
+ * 几何内缩：把四边形四角朝质心方向收进 frac（0..1）。
+ * 用于自动校正裁掉卡边外的残留暗边；手动裁切不走此路径（保留用户拖的角点）。
+ */
+export function insetQuad(pts: Pt[], frac: number): Pt[] {
+  if (frac <= 0) return pts;
+  const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
+  const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
+  const k = 1 - frac;
+  return pts.map((p) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k }));
+}
+
 /** 常见证件长宽比（长/短）：身份证、驾驶证、户口本、护照 */
 export const CARD_RATIOS = [85.6 / 54, 88 / 60, 143 / 105, 125 / 88];
 
@@ -955,6 +974,11 @@ export interface WarpOptions {
    * 纯结构分析（不依赖 OCR 模型），保守阈值避免误翻；失败或不确定时不影响原图。
    */
   autoFlip?: boolean;
+  /**
+   * 裁边内缩比例（0..1）：把四边形朝质心收进一点，裁掉卡边外残留的暗边（小黑边）。
+   * 默认走 EDGE_TRIM_FRAC；传 0 关闭。仅自动校正使用，手动裁切不走此路径。
+   */
+  edgeTrim?: number;
 }
 
 /**
@@ -990,6 +1014,9 @@ export async function warpToCorrected(
       q = rotateQuad180Px(q);
     }
   }
+  // 自动校正默认内缩：裁掉卡边外残留的暗边（深色背景下即"小黑边"）。
+  // 仅自动路径生效；手动裁切(⛶)由用户自行拖动角点，不在此内缩。
+  q = insetQuad(q, opts.edgeTrim ?? EDGE_TRIM_FRAC);
   const o8 = await warpAsync(sd.data, sd.width, sd.height, q, outW, outH);
   const out = makeCanvas(outW, outH);
   const octx = out.getContext('2d');

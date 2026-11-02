@@ -58,9 +58,32 @@ export interface CardItem {
   ocrHits?: string[]; // 命中的关键词
   /** 用户手动改过类型：之后 OCR 不再覆盖 */
   typeManual?: boolean;
+  /** 渐进预览占位：图片已上屏、校正结果还没回来（只用于渲染"识别中"，不参与导出） */
+  pending?: boolean;
 }
 
 let KEY = 1;
+
+/**
+ * 让浏览器先画一帧再继续。
+ * 用途：导入时先把原图占位刷上屏，再去做耗时的检测/推理；否则同步的检测
+ * 会和 setState 挤在同一个任务里，中间态永远画不出来（用户只看到一段空白等待）。
+ * 兜底 setTimeout：后台标签页 requestAnimationFrame 可能不触发，不能把流程卡死。
+ */
+function nextPaint(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const fin = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => requestAnimationFrame(fin));
+    }
+    setTimeout(fin, 60);
+  });
+}
 
 const NEED_CHECK = 0.6; // 置信度低于该值标记「需检查」
 
@@ -260,8 +283,12 @@ export default function CardLayout() {
     [algo, paper, maxCard, cfg],
   );
   // 份数展开：每张图按 copies 复制进排版序列（T1）
+  // 排除 pending 占位：它只有原图、还没校正，若参与排版/导出会把整张照片当卡面印出去。
   const expanded = useMemo(
-    () => checked.flatMap((it) => Array.from({ length: Math.max(1, it.copies) }, () => it)),
+    () =>
+      checked
+        .filter((it) => !it.pending)
+        .flatMap((it) => Array.from({ length: Math.max(1, it.copies) }, () => it)),
     [checked],
   );
   const pages = useMemo(() => paginate(expanded.length, grid.perPage), [expanded.length, grid.perPage]);
@@ -353,48 +380,66 @@ export default function CardLayout() {
       const f = files[fi];
       try {
         const { img, objectUrl } = await loadImageEl(f);
+        // 【渐进预览】图片一解码就先上屏（整图占位，标记"识别中"），不等模型。
+        // 随后的模型/透视校正再【原地】把占位换成规整卡面；缩略图容器监听 dataUrl 变化，
+        // 会重放"淡入 + 圆角 morph"动画 → 表现为「立即显示 → 平滑过渡为身份证样式」。
+        const placeholder: CardItem = { ...baseItem(f, objectUrl, img, FULL_QUAD, 0), pending: true };
+        setItems((prev) => [...prev, placeholder]);
+        await nextPaint(); // 先让原图真的画出来，再去跑耗时的检测/推理
+        // 原地替换占位：用户已把占位删掉时不再插入（避免"幽灵条目"复活）
+        const replacePlaceholder = (next: CardItem[]) =>
+          setItems((prev) => {
+            const i = prev.findIndex((x) => x.key === placeholder.key);
+            if (i < 0) return prev;
+            const out = prev.slice();
+            out.splice(i, 1, ...next);
+            return out;
+          });
         if (modelReady) {
           // 增强模型主路径：直接产出已校正卡面（含多卡拆分与 90° 摆正）
           if (files.length > 1) setMsg(`增强识别中 ${fi + 1}/${files.length}：${f.name}`);
+          let its: CardItem[] = [];
           try {
-            const its = await itemsFromModel(f, objectUrl, img);
-            if (its.length > 0) {
-              added.push(...its);
-              continue;
-            }
-            // 模型正常但没检出 → 回退经典 CV
+            its = await itemsFromModel(f, objectUrl, img);
           } catch {
             // 模型/Worker 失败 → 回退经典 CV
           }
+          if (its.length > 0) {
+            replacePlaceholder(its);
+            added.push(...its);
+            continue;
+          }
+          // 模型正常但没检出 → 回退经典 CV
         }
         const its = itemsFromCv(f, objectUrl, img);
+        if (its.length === 0) {
+          // 一张都没检出：保留整图占位（低置信），交给用户手动框选
+          update(placeholder.key, { pending: false });
+          added.push(placeholder);
+          continue;
+        }
+        replacePlaceholder(its);
         for (const it of its) {
           // T3：识别置信度高时自动透视矫正；开启旧版 ML 且经典检测不足时尝试增强。
           // 任一失败或不满足阈值 → 不自动处理，保持原图，由用户手动裁切兜底。
-          if (autoCorrect) {
-            if (it.confidence >= NEED_CHECK) {
-              try {
+          if (autoCorrect && it.confidence >= NEED_CHECK) {
+            try {
+              const { ow, oh } = correctedSize(it.type);
+              const corrected = await warpToCorrected(it.img, it.quad, ow, oh, { upright: true, autoFlip: true });
+              update(it.key, { corrected, auto: true });
+            } catch {
+              /* 自动矫正失败 → 保持原图，手动兜底 */
+            }
+          } else if (autoCorrect && useML) {
+            try {
+              const ml = await detectCardQuadWithML(it.img);
+              if (ml.confidence >= NEED_CHECK) {
                 const { ow, oh } = correctedSize(it.type);
-                const corrected = await warpToCorrected(it.img, it.quad, ow, oh, { upright: true, autoFlip: true });
-                it.corrected = corrected;
-                it.auto = true;
-              } catch {
-                /* 自动矫正失败 → 保持原图，手动兜底 */
+                const corrected = await warpToCorrected(it.img, ml.quad, ow, oh, { upright: true, autoFlip: true });
+                update(it.key, { quad: ml.quad, confidence: ml.confidence, corrected, auto: true });
               }
-            } else if (useML) {
-              try {
-                const ml = await detectCardQuadWithML(it.img);
-                if (ml.confidence >= NEED_CHECK) {
-                  const { ow, oh } = correctedSize(it.type);
-                  const corrected = await warpToCorrected(it.img, ml.quad, ow, oh, { upright: true, autoFlip: true });
-                  it.quad = ml.quad;
-                  it.confidence = ml.confidence;
-                  it.corrected = corrected;
-                  it.auto = true;
-                }
-              } catch {
-                /* ML 增强失败 → 保持原图，手动兜底 */
-              }
+            } catch {
+              /* ML 增强失败 → 保持原图，手动兜底 */
             }
           }
           added.push(it);
@@ -403,7 +448,6 @@ export default function CardLayout() {
         /* 读取失败忽略 */
       }
     }
-    setItems((prev) => [...prev, ...added]);
     setBusy(false);
     setMsg('');
     // 导入完成后立刻排队做证件类型识别（后台逐张进行，不阻塞继续添加）
@@ -754,8 +798,8 @@ export default function CardLayout() {
           )}
           {items.map((it, i) => {
             const t = cardTypeOf(it.type);
-            const needs = !it.manual && !it.auto && it.confidence < NEED_CHECK;
-            const badge = it.auto ? '已校正' : needs ? '需检查' : it.checked ? '可导出' : '已排除';
+            const needs = !it.manual && !it.auto && !it.pending && it.confidence < NEED_CHECK;
+            const badge = it.pending ? '识别中' : it.auto ? '已校正' : needs ? '需检查' : it.checked ? '可导出' : '已排除';
             const shown = it.corrected?.dataUrl ?? it.dataUrl;
             return (
               <div key={it.key} className={'ph-card' + (it.checked ? ' on' : '')}>
@@ -767,12 +811,13 @@ export default function CardLayout() {
                   />
                 </label>
                 <span
-                  className={'ph-badge ' + (needs ? 'warn' : 'ok')}
-                  title={`自动检测置信度 ${Math.round(it.confidence * 100)}%`}
+                  className={'ph-badge ' + (it.pending ? 'busy' : needs ? 'warn' : 'ok')}
+                  title={it.pending ? '正在识别卡面并自动校正…' : `自动检测置信度 ${Math.round(it.confidence * 100)}%`}
                 >
+                  {it.pending && <span className="spinner dark" />}
                   {badge}
                 </span>
-                <div className="ph-imgbox">
+                <div className="ph-imgbox" key={shown}>
                   <img
                     src={shown}
                     alt={it.name}

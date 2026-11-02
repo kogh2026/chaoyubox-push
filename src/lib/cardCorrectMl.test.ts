@@ -302,11 +302,15 @@ describe('modelCorrectLoop（涂白循环主流程，桩 runner）', () => {
     expect(r.pages).toHaveLength(1);
     expect(r.passes).toBe(2);
     expect(r.pages[0].score).toBeCloseTo(0.9, 5);
-    expect(r.pages[0].imageData.width).toBe(200);
-    expect(r.pages[0].imageData.height).toBe(140);
-    // warp 自原图：卡面中心应为白
+    // 自动校正内缩(EDGE_TRIM)会让输出尺寸微缩约 0.8%，放宽容差带（仍远大于截断崩塌）
+    expect(r.pages[0].imageData.width).toBeGreaterThanOrEqual(197);
+    expect(r.pages[0].imageData.width).toBeLessThanOrEqual(200);
+    expect(r.pages[0].imageData.height).toBeGreaterThanOrEqual(137);
+    expect(r.pages[0].imageData.height).toBeLessThanOrEqual(140);
+    // warp 自原图：卡面中心应为白（按真实宽度取中心）
     const pd = r.pages[0].imageData.data;
-    const mid = (70 * 200 + 100) * 4;
+    const w0 = r.pages[0].imageData.width;
+    const mid = (Math.floor(r.pages[0].imageData.height / 2) * w0 + Math.floor(w0 / 2)) * 4;
     expect(pd[mid]).toBeGreaterThan(230);
   });
 
@@ -324,7 +328,7 @@ describe('modelCorrectLoop（涂白循环主流程，桩 runner）', () => {
     expect(r.pages).toHaveLength(2);
     expect(r.passes).toBe(2); // maxPages=2：两轮即收满两张
     expect(r.pages[1].score).toBeCloseTo(0.05, 5);
-    expect(r.pages[1].imageData.width).toBeGreaterThanOrEqual(159); // float 截断容差（爱印 trunc 同款）
+    expect(r.pages[1].imageData.width).toBeGreaterThanOrEqual(157); // float 截断 + 自动校正内缩容差（爱印 trunc 同款）
     expect(r.pages[1].imageData.width).toBeLessThanOrEqual(160);
   });
 
