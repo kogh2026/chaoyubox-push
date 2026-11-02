@@ -31,6 +31,7 @@ export default function OfficeToPdf() {
   const [sofficePath, setSofficePath] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [msgType, setMsgType] = useState<'info' | 'ok' | 'err'>('info');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useHotkeyActions('office-to-pdf', 'Office 转 PDF', {
@@ -67,14 +68,17 @@ export default function OfficeToPdf() {
     const paths = files.map((f) => f.path).filter(Boolean) as string[];
     if (paths.length === 0) {
       setMsg('未获取到本地文件路径（请在桌面应用中拖入文件）。');
+      setMsgType('err');
       return;
     }
     setBusy(true);
     setMsg('转换中…');
+    setMsgType('info');
     try {
       const res = await api.convertOffice({ files: paths, sofficePath: sofficePath || undefined });
       if (!res.ok) {
         setMsg('转换失败：' + (res.error || '未知错误'));
+        setMsgType('err');
         setBusy(false);
         return;
       }
@@ -86,8 +90,10 @@ export default function OfficeToPdf() {
       );
       const okCount = res.results.filter((r) => r.ok).length;
       setMsg(`完成 ${okCount}/${res.results.length} 个文件`);
+      setMsgType('ok');
     } catch (e) {
       setMsg('转换异常：' + String(e));
+      setMsgType('err');
     }
     setBusy(false);
   }
@@ -106,7 +112,7 @@ export default function OfficeToPdf() {
       {!isElectron && (
         <div className="warn-box">
           <b>此功能需在桌面应用中使用。</b> 当前是浏览器预览版，无法调用本地 LibreOffice。
-          请用 <code>npm run build &amp;&amp; npm run electron</code> 启动桌面版。
+          请在已安装的桌面版「超誉工作台」中打开此功能。
         </div>
       )}
 
@@ -181,11 +187,11 @@ export default function OfficeToPdf() {
 
       <section className="actions">
         <button className="btn primary" disabled={busy || files.length === 0 || officeReady !== true} onClick={convert}>
-          {busy ? '转换中…' : '转换为 PDF'}
+          {busy ? (<><span className="spinner" />转换中…</>) : '转换为 PDF'}
         </button>
       </section>
 
-      {msg && <div className="progress-text">{msg}</div>}
+      {msg && <div className={'progress-text' + (msgType === 'ok' ? ' ok' : msgType === 'err' ? ' err' : '')}>{msg}</div>}
 
       <div className="hint">
         说明：转换由本机 LibreOffice 完成（对应原版 aiyin-office.exe）。首次转换会启动 LibreOffice

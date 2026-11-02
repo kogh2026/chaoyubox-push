@@ -136,6 +136,21 @@ export async function rotatePdf(doc: Uint8Array, angle: 90 | 180 | 270, rangeInp
   return src.save();
 }
 
+// 逐页旋转：angles[i] 为第 i 页的「相对增量」角度（0/90/180/270），与页面已有旋转累加。
+// 供「逐页角度」面板使用——页面级设置优先于全局角度参数。
+export async function rotatePdfByPage(doc: Uint8Array, angles: number[]): Promise<Uint8Array> {
+  const src = await PDFDocument.load(doc);
+  const total = src.getPageCount();
+  for (let i = 0; i < total; i++) {
+    const a = angles[i] ?? 0;
+    if (![0, 90, 180, 270].includes(a)) continue;
+    const page = src.getPage(i);
+    const cur = ((page.getRotation().angle % 360) + 360) % 360;
+    page.setRotation(degrees((cur + a) % 360));
+  }
+  return src.save();
+}
+
 /* ===== 4. 统一页面大小 ===== */
 
 export interface PageSizePt {

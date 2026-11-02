@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { APP_VERSION } from './lib/appVersion';
 import BatchPrint from './tools/BatchPrint';
 import CardLayout from './tools/CardLayout';
@@ -80,6 +80,15 @@ export default function App() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<Cat | 'all'>('all');
   const [s, update] = useSettings();
+  // 工具页 keep-alive：首次进入后保持挂载，切走时仅用 display:none 隐藏（而非卸载），
+  // 避免来回切换丢失已填内容 / 操作状态（如 PDF 工具箱选中的子工具、证件照已上传的图片）。
+  const activeToolId = route.page === 'tool' ? route.id : null;
+  const [mountedTools, setMountedTools] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (activeToolId) {
+      setMountedTools((m) => (m[activeToolId] ? m : { ...m, [activeToolId]: true }));
+    }
+  }, [activeToolId]);
   // 当前时间：每 30 秒刷新一次，保证长时间开机（跨小时/跨天）问候语与日期星期保持正确
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -209,7 +218,7 @@ export default function App() {
       title: '打印价格',
       desc: '批量打印按它报价',
       action: '设置',
-      skip: '默认A4执行',
+      skip: '先用默认',
       go: () => openSettings('price'),
     },
     {
@@ -229,6 +238,18 @@ export default function App() {
       go: () => openSettings('account'),
     },
   ];
+
+  // 工具组件映射：首次进入后保持挂载（keep-alive），切走仅隐藏，避免丢失状态
+  const toolNodes: Record<string, ReactNode> = {
+    'batch-print': <BatchPrint onOpenPrice={() => setRoute({ page: 'settings', tab: 'price' })} />,
+    'id-card': <CardLayout />,
+    'id-photo': <IdPhoto />,
+    'office-to-pdf': <OfficeToPdf />,
+    'image-layout': <ImageLayout />,
+    'batch-card': <BatchCard />,
+    'pdf-toolbox': <PdfTools />,
+    'pdf-prep': <PdfPrep />,
+  };
 
   return (
     <div className="app">
@@ -295,23 +316,9 @@ export default function App() {
 
       <main className="main">
         {healthReport && healthReport.overall !== 'ok' && !healthDismissed && (
-          <div
-            className="health-banner"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 14px',
-              margin: '0 0 12px',
-              borderRadius: 8,
-              border: `1px solid ${STATUS_COLOR[healthReport.overall] === 'green' ? '#16a34a' : STATUS_COLOR[healthReport.overall] === 'yellow' ? '#d97706' : '#dc2626'}`,
-              background: STATUS_COLOR[healthReport.overall] === 'yellow' ? '#fffbeb' : '#fef2f2',
-            }}
-          >
-            <span style={{ fontWeight: 600, color: STATUS_COLOR[healthReport.overall] === 'green' ? '#16a34a' : STATUS_COLOR[healthReport.overall] === 'yellow' ? '#d97706' : '#dc2626' }}>
-              {STATUS_LABEL[healthReport.overall]}：运行环境体检提示
-            </span>
-            <span style={{ flex: 1, fontSize: 13, color: '#444' }}>
+          <div className="health-banner" data-sev={STATUS_COLOR[healthReport.overall]}>
+            <b>{STATUS_LABEL[healthReport.overall]}：运行环境体检提示</b>
+            <span className="hb-msg">
               {healthReport.items.filter((i) => i.severity !== 'ok').map((i) => i.label).join('、')} 异常，建议前往「设置 → 维护」查看并清理。
             </span>
             <button className="btn" onClick={() => setRoute({ page: 'settings', tab: 'maintenance' })}>
@@ -412,7 +419,7 @@ export default function App() {
                   <span className="toolcard-body">
                     <span className="toolcard-name">
                       {t.name}
-                      {!t.ready && <em className="badge">待开发</em>}
+                      {!t.ready && <em className="badge">即将上线</em>}
                     </span>
                     <span className="toolcard-tags">
                       {t.tags.map((tg) => (
@@ -430,16 +437,18 @@ export default function App() {
             </p>
           </div>
         )}
-        {route.page === 'tool' && route.id === 'batch-print' && (
-          <BatchPrint onOpenPrice={() => setRoute({ page: 'settings', tab: 'price' })} />
+        {Object.entries(toolNodes).map(([id, node]) =>
+          mountedTools[id] ? (
+            <div
+              key={id}
+              className="tool-keep"
+              style={{ display: activeToolId === id ? '' : 'none' }}
+              aria-hidden={activeToolId !== id}
+            >
+              {node}
+            </div>
+          ) : null,
         )}
-        {route.page === 'tool' && route.id === 'id-card' && <CardLayout />}
-        {route.page === 'tool' && route.id === 'id-photo' && <IdPhoto />}
-        {route.page === 'tool' && route.id === 'office-to-pdf' && <OfficeToPdf />}
-        {route.page === 'tool' && route.id === 'image-layout' && <ImageLayout />}
-        {route.page === 'tool' && route.id === 'batch-card' && <BatchCard />}
-        {route.page === 'tool' && route.id === 'pdf-toolbox' && <PdfTools />}
-        {route.page === 'tool' && route.id === 'pdf-prep' && <PdfPrep />}
         {route.page === 'settings' && <Settings initialTab={route.tab as never} />}
       </main>
     </div>

@@ -46,7 +46,7 @@ import {
   type ImagePageSize,
   type NumberTemplate,
 } from '../../lib/pdfTools';
-import { unifyPageSize, rotatePdf, PAPER_SIZES_PT, type FitMode } from '../../lib/pdfOps';
+import { unifyPageSize, rotatePdf, rotatePdfByPage, PAPER_SIZES_PT, type FitMode } from '../../lib/pdfOps';
 import {
   analyzeBlankPages,
   cropWhiteBorders,
@@ -222,8 +222,13 @@ export default function PdfTools() {
     return files.length > 0;
   }
 
+  // 「文档属性」「签名检查」由各自自定义面板的按钮独立完成，主「执行」按钮对它们无效，隐藏以免误导
+  const panelOnlyTool = def.custom === 'metadata' || def.custom === 'signature';
+
   async function dispatch(): Promise<Out | null> {
-    const doc0 = one!.data;
+    // input==='none' 的工具（如「新建空白文档」）不需要已打开的 PDF，此时 one 为 null；
+    // 这类工具的 case 不会读取 doc0，故这里对 one 做空值兜底，避免顶层解引用崩溃。
+    const doc0 = one ? one.data : (null as unknown as Uint8Array);
     const inputs = files.map((f) => ({ name: f.name, data: f.data }));
     switch (def.run) {
       case 'merge': {
@@ -288,6 +293,12 @@ export default function PdfTools() {
         return { kind: 'single', name: suffix('_去空白'), data, note: `已删除空白页：第 ${removed.join('、')} 页` };
       }
       case 'rotate': {
+        // 优先使用「逐页角度」面板设置的角度；若所有页都为 0，则退回到全局角度参数
+        const anyPerPage = angles.some((a) => a !== 0);
+        if (anyPerPage) {
+          const data = await rotatePdfByPage(doc0, angles);
+          return { kind: 'single', name: suffix('_旋转'), data, note: '已按逐页角度旋转' };
+        }
         const angle = Number(s('angle')) as 90 | 180 | 270;
         const data = await rotatePdf(doc0, angle, s('range'));
         return { kind: 'single', name: suffix(`_旋转${angle}`), data, note: '旋转完成' };
@@ -684,11 +695,13 @@ export default function PdfTools() {
         {def.custom === 'signature' && one && <SignaturePanel data={one.data} />}
 
         <div className="actions">
-          <button className="btn primary" disabled={!canRun()} onClick={() => void run()}>
-            {busy ? '处理中…' : def.input === 'none' ? '生成文档' : '执行'}
-          </button>
-          {busy && <span className="muted">本地处理中，大文件请稍候…</span>}
-          {!busy && def.input !== 'none' && !canRun() && <span className="muted">请先添加文件</span>}
+          {!panelOnlyTool && (
+            <button className="btn primary" disabled={!canRun()} onClick={() => void run()}>
+              {busy ? '处理中…' : def.input === 'none' ? '生成文档' : '执行'}
+            </button>
+          )}
+          {busy && !panelOnlyTool && <span className="muted">本地处理中，大文件请稍候…</span>}
+          {!busy && !panelOnlyTool && def.input !== 'none' && !canRun() && <span className="muted">请先添加文件</span>}
         </div>
         {msg && <div className={'pp-status' + (msg.startsWith('失败') ? ' err' : '')}>{msg}</div>}
 
@@ -749,7 +762,10 @@ function ResultPanel({
       // 一句话说清「成功去哪了 + 失败为什么」。以前这里调用两次 onMsg，
       // 后半句会把前半句（含目标目录）整个顶掉，用户事后不知去哪找文件。
       const summary = batchMessage(res);
-      onMsg(res.failed.length > 0 ? `${summary}：${res.failed[0].error}` : summary);
+      const tail = res.failed.length
+        ? `（失败 ${res.failed.length} 个：${res.failed[0].error}${res.failed.length > 1 ? ' 等' : ''}）`
+        : '';
+      onMsg(summary + tail);
       void revealIfWanted(res.dir ?? undefined, res.fallback);
     } catch (e) {
       onMsg(`保存失败：${e instanceof Error ? e.message : String(e)}`);
