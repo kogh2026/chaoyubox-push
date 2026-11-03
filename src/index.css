@@ -122,6 +122,8 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .icw-brand-name em { font-style: normal; font-size: 12px; color: var(--brand); font-weight: 500; }
 .icw-topbar-right { display: flex; align-items: center; gap: 10px; }
 .icw-trial { font-size: 12px; color: #b06a00; background: #fff4e0; border: 1px solid #ffd89a; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+/* 批量打印标题旁的「试用」小标签（对齐爱印） */
+.bp-trial-tag { font-size: 11px; color: #b06a00; background: #fff4e0; border: 1px solid #ffd89a; border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; font-weight: 500; }
 /* 爱印式上传引导卡 */
 .icw-upload-card { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; background: #fafbfc; }
 .icw-upload-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
@@ -147,6 +149,11 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .icw-tpl-meta .muted { font-size: 10px; }
 .icw-tpl-ops { display: flex; gap: 6px; flex-shrink: 0; }
 .icw-tpl-ops .btn { padding: 3px 10px; font-size: 12px; }
+.btn.sm { padding: 2px 9px; font-size: 12px; }
+/* 模板内联重命名 */
+.icw-tpl-rename { display: flex; align-items: center; gap: 6px; width: 100%; }
+.icw-tpl-rename-input { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid var(--brand); border-radius: 6px; font-size: 12px; }
+.icw-tpl-rename-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(30,99,236,.18); }
 .icw-col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 .icw-left { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh / var(--ui-zoom, 1) - 72px); overflow-y: auto; }
 .icw-center { display: flex; flex-direction: column; gap: 10px; }
@@ -222,6 +229,14 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .slider-row em { font-style: normal; text-align: right; color: var(--text); }
 .slider-row input[type="range"] { width: 100%; accent-color: var(--brand); }
 .wm-text { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+/* ===== 全屏模式打磨：工具栏常驻 + 画布自适应放大 + 浮层退出按钮 ===== */
+.icw-center:fullscreen { background: var(--bg); padding: 12px; box-sizing: border-box; }
+.icw-center:fullscreen .icw-cbar { position: sticky; top: 0; z-index: 6; background: var(--bg); padding: 6px 0; }
+.icw-center:fullscreen .icw-canvas-wrap { flex: 1; min-height: 0; }
+/* 全屏下让预览画布尽量填满可视区（仅预览，导出仍用全分辨率） */
+.icw-center:fullscreen .icw-canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+.icw-fs-exit { position: fixed; top: 14px; right: 14px; z-index: 30; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,.22); }
+.icw-fs-exit:hover { border-color: var(--brand); color: var(--brand); }
 @media (max-width: 1100px) { .icw { grid-template-columns: 1fr; } .icw-left, .icw-right { max-height: none; } }
 
 /* ===== 证件照换底 ===== */
@@ -596,7 +611,7 @@ label.idp-row { cursor: pointer; }
 .idp-bottom-r .btn { white-space: nowrap; }
 
 /* ===== 批量打印（工具栏 + 表格 + 预览 + 底栏） ===== */
-.bp { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; height: calc(100vh / var(--ui-zoom, 1) - 120px); min-height: 420px; position: relative; }
+.bp { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto; gap: 10px; height: calc(100vh / var(--ui-zoom, 1) - 172px); min-height: 420px; position: relative; }
 .bp-main { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .bp-toolbar { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; display: flex; align-items: center; gap: 10px; }
 .bp-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }

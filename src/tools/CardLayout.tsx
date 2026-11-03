@@ -413,6 +413,8 @@ export default function CardLayout() {
   const [dragOver, setDragOver] = useState(false);
   const [templates, setTemplates] = useState<SavedTemplate[]>(() => loadTemplates());
   const [isFs, setIsFs] = useState(false); // 全屏态
+  const [editId, setEditId] = useState<string | null>(null); // 正在内联重命名的模板 id
+  const [editName, setEditName] = useState(''); // 重命名输入框内容
   const [cropKey, setCropKey] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -708,6 +710,32 @@ export default function CardLayout() {
     } catch {
       setMsg('删除失败');
     }
+  }
+
+  // 重命名模板（内联编辑）：进入编辑态
+  function startRename(id: string, current: string) {
+    setEditId(id);
+    setEditName(current);
+  }
+  // 提交重命名：空名回退为「未命名模板」，写回 localStorage 列表
+  function commitRename() {
+    if (!editId) return;
+    const name = editName.trim() || '未命名模板';
+    const next = templates.map((x) => (x.id === editId ? { ...x, name } : x));
+    try {
+      localStorage.setItem(TPL_LIST_KEY, JSON.stringify(next));
+      setTemplates(next);
+      setMsg(`已重命名：${name}`);
+    } catch {
+      setMsg('重命名失败');
+    } finally {
+      setEditId(null);
+      setEditName('');
+    }
+  }
+  function cancelRename() {
+    setEditId(null);
+    setEditName('');
   }
 
   // 应用模板：中栏快捷按钮 → 套用最近保存的一份
@@ -1273,6 +1301,11 @@ export default function CardLayout() {
 
       {/* ===== 中栏：画布 ===== */}
       <section className="icw-center" ref={centerRef}>
+        {isFs && (
+          <button className="icw-fs-exit" onClick={toggleFullscreen} title="退出全屏（Esc）">
+            ✕ 退出全屏
+          </button>
+        )}
         <div className="icw-cbar">
           <span className="icw-cbar-info">
             {paper.name}·共 {pages.length} 页 PDF
@@ -1594,18 +1627,44 @@ export default function CardLayout() {
             <div className="icw-tpl-list">
               {templates.map((e) => (
                 <div className="icw-tpl-item" key={e.id}>
-                  <div className="icw-tpl-meta">
-                    <b>{e.name}</b>
-                    <span className="muted">{fmtTplTime(e.ts)}</span>
-                  </div>
-                  <div className="icw-tpl-ops">
-                    <button className="btn" onClick={() => applyTemplateById(e.id)}>
-                      应用
-                    </button>
-                    <button className="btn del" onClick={() => deleteTemplate(e.id)}>
-                      删除
-                    </button>
-                  </div>
+                  {editId === e.id ? (
+                    <div className="icw-tpl-rename">
+                      <input
+                        className="icw-tpl-rename-input"
+                        autoFocus
+                        value={editName}
+                        onChange={(ev) => setEditName(ev.target.value)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === 'Enter') commitRename();
+                          else if (ev.key === 'Escape') cancelRename();
+                        }}
+                      />
+                      <button className="btn primary sm" onClick={commitRename}>
+                        保存
+                      </button>
+                      <button className="btn sm" onClick={cancelRename}>
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="icw-tpl-meta">
+                        <b>{e.name}</b>
+                        <span className="muted">{fmtTplTime(e.ts)}</span>
+                      </div>
+                      <div className="icw-tpl-ops">
+                        <button className="btn" onClick={() => applyTemplateById(e.id)}>
+                          应用
+                        </button>
+                        <button className="btn" onClick={() => startRename(e.id, e.name)}>
+                          重命名
+                        </button>
+                        <button className="btn del" onClick={() => deleteTemplate(e.id)}>
+                          删除
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
