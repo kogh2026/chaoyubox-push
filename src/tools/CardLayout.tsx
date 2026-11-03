@@ -452,8 +452,9 @@ export default function CardLayout() {
   const [showGuide, setShowGuide] = useState(true); // T1 预览参考线（不烧入导出）
   const [cropMarks, setCropMarks] = useState(false); // T1 蚂蚁线裁切口（烧入导出）
   const [autoCorrect, setAutoCorrect] = useState(true); // T3 识别置信度高时自动校正
-  const [enhanceModel, setEnhanceModel] = useState(true); // 增强模型（爱印记卡矫正 FP32）：主路径
+  const [enhanceModel] = useState(true); // 增强模型（爱印记卡矫正 FP32）：主路径，默认常开（界面不暴露开关）
   const [useML, setUseML] = useState(false); // T3 可选 ML 增强（经典 CV 不足时的备选实验路径）
+  const [showAdvanced, setShowAdvanced] = useState(false); // 高级设置折叠（藏起非常用选项）
   const [colorMode, setColorMode] = useState<ColorMode>('enhance');
   const [sat, setSat] = useState(100);
   const [sharpen, setSharpen] = useState(0);
@@ -1224,7 +1225,7 @@ export default function CardLayout() {
     return Array.from(m.entries()).map(([t, n]) => `${n}张${cardTypeOf(t).name}`);
   }, [checked]);
   const scaleNote =
-    grid.scale < 1 ? `空间已缩小至 ${Math.round(grid.scale * 100)}%` : '空间未缩小';
+    grid.scale < 1 ? `已缩小至 ${Math.round(grid.scale * 100)}%` : '没缩小';
 
   const cropItem =
     cropKey != null ? items.find((it) => it.key === cropKey) ?? null : null;
@@ -1236,7 +1237,7 @@ export default function CardLayout() {
         <div className="icw-brand">
           <span className="icw-logo">🪪</span>
           <span className="icw-brand-name">
-            证卡拼版助手<em>（增强模型）</em>
+            证卡拼版助手
           </span>
         </div>
       </div>
@@ -1548,7 +1549,7 @@ export default function CardLayout() {
         <div className="icw-summary">
           <b>{typeCounts.length ? typeCounts.join(' + ') : '未选择照片'}</b>
           <span>
-            {paper.name} {orient === 'p' ? '竖放' : '横放'} · {scaleNote}
+            {paper.name} 纸 {orient === 'p' ? '竖着放' : '横着放'} · {scaleNote}
           </span>
         </div>
 
@@ -1627,9 +1628,9 @@ export default function CardLayout() {
         </div>
 
         <div className="icw-sec">
-          <h4>布局算法</h4>
+          <h4><span className="ic">📐</span>布局排列</h4>
           <div className="seg">
-            {LAYOUT_ALGOS.map((a) => (
+            {LAYOUT_ALGOS.filter((a) => a.id !== 'maxrects').map((a) => (
               <button
                 key={a.id}
                 className={'seg-btn' + (algo === a.id ? ' active' : '')}
@@ -1641,50 +1642,67 @@ export default function CardLayout() {
           </div>
           <label className="chk" style={{ marginTop: 6 }}>
             <input type="checkbox" checked={showGuide} onChange={(e) => setShowGuide(e.target.checked)} />
-            预览参考线（头肩定位，不烧入导出）
-          </label>
-          <label className="chk" style={{ marginTop: 6 }}>
-            <input type="checkbox" checked={cropMarks} onChange={(e) => setCropMarks(e.target.checked)} />
-            导出蚂蚁线裁切口
+            屏幕上显示辅助线（不打印）
           </label>
         </div>
 
         <div className="icw-sec">
-          <h4>证件识别</h4>
+          <h4><span className="ic">🤖</span>自动修正</h4>
           <label className="chk">
-            <input
-              type="checkbox"
-              checked={enhanceModel}
-              onChange={(e) => setEnhanceModel(e.target.checked)}
-              disabled={!cardCorrectAvailable()}
-            />
-            增强模型（AI 卡面精定位{cardCorrectAvailable() ? '·已内置' : '·桌面端可用'}）
-          </label>
-          <label className="chk" style={{ marginTop: 6 }}>
             <input
               type="checkbox"
               checked={autoCorrect}
               onChange={(e) => setAutoCorrect(e.target.checked)}
             />
-            识别置信度高时自动校正
-          </label>
-          <label className="chk" style={{ marginTop: 6 }}>
-            <input type="checkbox" checked={useML} onChange={(e) => setUseML(e.target.checked)} />
-            抠图增强识别（实验·经典检测不足时）
+            照片歪了自动摆正
           </label>
           <p className="hint">
-            增强模型=爱印同款「卡证矫正 FP32」：整图神经网络定位卡面四角+自动摆正，失败或未检出时自动回退本地边缘检测。不准时点卡片的 ⛶ 手动裁切修正。
+            导入后会自动找出证件四角并摆正；要是没对准，点卡片上的 ⛶ 手动拉一下就行。
           </p>
         </div>
 
+        <div className="icw-sec icw-adv">
+          <div className="adv-head" onClick={() => setShowAdvanced((v) => !v)}>
+            <span>高级设置</span>
+            <span className={'adv-caret' + (showAdvanced ? ' open' : '')}>▸</span>
+          </div>
+          {showAdvanced && (
+            <div className="adv-body">
+              <label className="chk">
+                <input type="checkbox" checked={cropMarks} onChange={(e) => setCropMarks(e.target.checked)} />
+                打印时加裁剪虚线
+              </label>
+              <label className="chk" style={{ marginTop: 6 }}>
+                <input type="checkbox" checked={useML} onChange={(e) => setUseML(e.target.checked)} />
+                边缘精修（实验功能）
+              </label>
+              <div className="adv-algo">
+                <span className="adv-algo-label">其它排法</span>
+                <div className="seg">
+                  {LAYOUT_ALGOS.filter((a) => a.id === 'maxrects').map((a) => (
+                    <button
+                      key={a.id}
+                      className={'seg-btn' + (algo === a.id ? ' active' : '')}
+                      onClick={() => setAlgo(a.id)}
+                      title="只在混排不同尺寸的证件时才用，普通证件用「智能适配」更合适"
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="icw-sec">
-          <h4>版面位置</h4>
+          <h4><span className="ic">📍</span>摆放位置</h4>
           <div className="seg">
             {(
               [
-                ['top', '居上'],
-                ['center', '居中'],
-                ['bottom', '居下'],
+                ['top', '靠上'],
+                ['center', '中间'],
+                ['bottom', '靠下'],
               ] as [Pos, string][]
             ).map(([v, label]) => (
               <button
@@ -1697,7 +1715,7 @@ export default function CardLayout() {
             ))}
           </div>
           <div className="slider-row">
-            <span>上下移缩</span>
+            <span>上下微调</span>
             <input
               type="range"
               min={-148}
@@ -1708,7 +1726,7 @@ export default function CardLayout() {
             <em>{offY} mm</em>
           </div>
           <div className="slider-row">
-            <span>左右移缩</span>
+            <span>左右微调</span>
             <input
               type="range"
               min={-80}
@@ -1721,7 +1739,7 @@ export default function CardLayout() {
         </div>
 
         <div className="icw-sec">
-          <h4>图片间距</h4>
+          <h4><span className="ic">↔️</span>照片间距</h4>
           <div className="slider-row">
             <span>间距</span>
             <input
@@ -1736,14 +1754,14 @@ export default function CardLayout() {
         </div>
 
         <div className="icw-sec">
-          <h4>色彩模式</h4>
+          <h4><span className="ic">🎨</span>颜色</h4>
           <div className="seg">
             {(
               [
-                // 命名对齐爱印：增强 / 灰度扫描 / 原色（枚举值不变，仅改展示文案）
-                ['enhance', '增强'],
-                ['bw', '灰度扫描'],
-                ['color', '原色'],
+                // 命名对齐爱印：自动增强 / 黑白 / 彩色（枚举值不变，仅改展示文案）
+                ['enhance', '自动增强'],
+                ['bw', '黑白'],
+                ['color', '彩色'],
               ] as [ColorMode, string][]
             ).map(([v, label]) => (
               <button

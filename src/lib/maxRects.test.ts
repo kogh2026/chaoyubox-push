@@ -65,7 +65,7 @@ describe('packMaxRects', () => {
 });
 
 describe('layoutStrategies: maxrects', () => {
-  it('LAYOUT_ALGOS 暴露「混排装箱」', () => {
+  it('LAYOUT_ALGOS 暴露「极限塞满」', () => {
     expect(LAYOUT_ALGOS.map((a) => a.id)).toContain('maxrects');
   });
 

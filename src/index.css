@@ -119,7 +119,6 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .icw-brand { display: flex; align-items: center; gap: 8px; }
 .icw-logo { font-size: 20px; }
 .icw-brand-name { font-size: 15px; font-weight: 700; }
-.icw-brand-name em { font-style: normal; font-size: 12px; color: var(--brand); font-weight: 500; }
 /* 原爱印的「试用 / 剩余 N 天 / 开通」属于其收费提示，本复刻版不呈现，相关样式一并移除 */
 /* 爱印式上传引导卡 */
 .icw-upload-card { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; background: #fafbfc; }
@@ -224,6 +223,14 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .icw-summary span { font-size: 11px; color: var(--muted); }
 .icw-sec { border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 8px; }
 .icw-sec h4 { margin: 0; font-size: 12px; color: var(--muted); font-weight: 600; }
+.icw-sec h4 .ic { margin-right: 5px; font-size: 13px; line-height: 1; }
+.icw-sec.icw-adv { border-top: 1px dashed var(--line); }
+.adv-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; padding: 2px 0; }
+.adv-head .adv-caret { margin-left: auto; display: inline-block; transition: transform var(--t-fast) var(--ease); }
+.adv-head .adv-caret.open { transform: rotate(90deg); }
+.adv-body { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+.adv-algo { display: flex; flex-direction: column; gap: 6px; }
+.adv-algo-label { font-size: 12px; color: var(--muted); }
 .cnt-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .cnt-btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 0; font-size: 12px; cursor: pointer; transition: background var(--t) var(--ease), border-color var(--t) var(--ease), color var(--t) var(--ease), transform var(--t-fast) var(--ease); }
 .cnt-btn:hover:not(.active):not(:disabled) { border-color: var(--brand); color: var(--brand); }

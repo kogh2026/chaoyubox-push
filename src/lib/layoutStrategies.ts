@@ -8,10 +8,10 @@ import { packMaxRects } from './maxRects';
 export type LayoutAlgo = 'grid' | 'compact' | 'adaptive' | 'maxrects';
 
 export const LAYOUT_ALGOS: { id: LayoutAlgo; name: string }[] = [
-  { id: 'grid', name: '标准网格' },
-  { id: 'compact', name: '紧凑填充' },
-  { id: 'adaptive', name: '自适应' },
-  { id: 'maxrects', name: '混排装箱' },
+  { id: 'grid', name: '整齐排' },
+  { id: 'compact', name: '紧凑省纸' },
+  { id: 'adaptive', name: '智能适配' },
+  { id: 'maxrects', name: '极限塞满' },
 ];
 
 const PAD2 = 12; // 与 idCardLayout.ts 中 PAD*2 对齐（打印安全边距）
