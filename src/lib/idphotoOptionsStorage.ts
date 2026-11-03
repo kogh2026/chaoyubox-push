@@ -44,7 +44,7 @@ const KEY = 'chaoyu.idphoto.options.v1';
  * 注意它与 `KEY` 里的 v1 **不是一回事**：key 名是「存档格式家族」，一旦换了就读不到老用户的设置；
  * 这里的版本号是「同一份存档内部的结构/语义版本」，靠迁移函数处理，key 不动。
  */
-export const CURRENT_OPTIONS_SCHEMA = 2;
+export const CURRENT_OPTIONS_SCHEMA = 3;
 
 /* ===== 合法取值域：全部从目录/类型派生，避免第二份真相 ===== */
 
@@ -136,23 +136,33 @@ function schemaVersionOf(raw: unknown): number {
 }
 
 /**
- * 存档迁移：v1 → v2。
+ * 存档迁移：v1 → v2 → v3。
  *
  * v2 改了两项**默认值**：抠图质量 `isnet → modnet`（快速）、去边缘强调默认开。
  * 默认值改在代码里是没用的 —— 老用户存档里存着旧值，`normalizePhotoOptions` 会照旧读回来，
  * 表现就是「代码改了、装上新版还是精细」。所以升级时把这两项一次性归位到新默认。
  *
+ * v3 把「精细（ISNet）」换成了「MODNet + 边缘精修」（`modnet-refine`）：
+ * 实测 ISNet 在证件照上反而更差（IoU 0.9788 vs MODNet 0.9984，12/51 张 < 0.90），
+ * 而边缘精修能解决真正的痛点（发丝处残留原底色）。
+ * 老存档里的 `isnet` 归一到 `modnet-refine` —— 用户当初要的是「更精细」，
+ * 新方案同样是「更精细」，只是换了个更好的实现方式，**不擅自推翻用户的选择**。
+ *
  * 只动这两项：规格 / 底色 / 纸张 / 间距等**用户真正表达过的偏好**一律保留。
- * 代价是「本来就爱用精细」的用户会被重置一次，切回去只需一次点击 ——
- * 比「新版默认值是假的」轻得多。
  */
 function migrateFrom(version: number, opts: PhotoOptions): PhotoOptions {
-  if (version >= 2) return opts;
-  return {
-    ...opts,
-    engine: DEFAULT_PHOTO_OPTIONS.engine,
-    defringeOn: DEFAULT_PHOTO_OPTIONS.defringeOn,
-  };
+  if (version >= 3) return opts;
+  const v2 = version >= 2
+    ? opts
+    : {
+        ...opts,
+        engine: DEFAULT_PHOTO_OPTIONS.engine,
+        defringeOn: DEFAULT_PHOTO_OPTIONS.defringeOn,
+      };
+  if (v2.engine === 'isnet') {
+    return { ...v2, engine: 'modnet-refine' };
+  }
+  return v2;
 }
 
 /**

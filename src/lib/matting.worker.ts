@@ -4,6 +4,7 @@
 // 会话随 Worker 常驻；模型从 appres:// 拉取一次。多 Worker 并行把几十张摊到多核。
 import { removeBackground, type Config } from '@imgly/background-removal';
 import * as ort from 'onnxruntime-web';
+import { refineEdgePixels } from './edgeRefine';
 
 interface MatteRequest {
   id: number;
@@ -15,6 +16,10 @@ interface MatteRequest {
   /** MODNet 模型 URL（appres://res/matting-model/modnet/modnet.onnx） */
   modnetUrl?: string;
   engine?: 'isnet' | 'modnet';
+  /** 边缘精修强度（0~1），0 = 关闭。在 Worker 内就地做颜色解混（见 edgeRefine.ts） */
+  refineStrength?: number;
+  /** 边缘精修激进度（越小越激进），默认 0.35 */
+  refineKappa?: number;
   /** 本 Worker 的 ORT 线程数（主线程按 CPU 核数 / Worker 数下发） */
   threads?: number;
 }
@@ -93,7 +98,13 @@ function rgba8Blob(img: ImageData): Blob {
   });
 }
 
-async function runModnet(file: ImageData, ortPath: string | undefined, modelUrl: string): Promise<ArrayBuffer> {
+async function runModnet(
+  file: ImageData,
+  ortPath: string | undefined,
+  modelUrl: string,
+  refineStrength: number,
+  refineKappa: number,
+): Promise<ArrayBuffer> {
   const session = await ensureModnetSession(ortPath, modelUrl);
   const iw = file.width, ih = file.height;
   const { w, h } = modnetSize(iw, ih);
@@ -134,6 +145,27 @@ async function runModnet(file: ImageData, ortPath: string | undefined, modelUrl:
   }
   actx.putImageData(aimg, 0, 0);
 
+  // 2.5) 边缘精修（颜色解混）：在半透明像素上还原纯前景色，去掉原底色残留。
+  // 必须在合成 PNG **之前**做：此刻原始 RGBA 与 alpha 都在手上，
+  // 既能用 alpha≈0 区域估到底色（B），又能在换底固化残留前改掉 RGB。
+  // alpha 蒙版是 w×h，而原始 RGBA 是 iw×ih —— 需要把 alpha 放大到原尺寸再解混。
+  if (refineStrength > 0) {
+    const scaleX = iw / w;
+    const scaleY = ih / h;
+    const aFull = new Float32Array(iw * ih);
+    for (let y = 0; y < ih; y++) {
+      const sy = Math.min(h - 1, Math.floor(y / scaleY));
+      for (let x = 0; x < iw; x++) {
+        const sx = Math.min(w - 1, Math.floor(x / scaleX));
+        aFull[y * iw + x] = alpha[sy * w + sx];
+      }
+    }
+    // outC 上放的就是原始 RGBA（putImageData 写入的），直接就地改它的 RGB
+    const raw = octxC.getImageData(0, 0, iw, ih);
+    refineEdgePixels(raw.data, aFull, iw, ih, { strength: refineStrength, kappa: refineKappa });
+    octxC.putImageData(raw, 0, 0);
+  }
+
   // 3) 合成原尺寸透明 PNG：原 RGB + 掩膜 alpha
   octxC.globalCompositeOperation = 'destination-in';
   octxC.drawImage(aoc, 0, 0, iw, ih);
@@ -160,7 +192,7 @@ function overrideThreads(n?: number): void {
 
 // ---------- 消息分发 ----------
 scope.onmessage = async (e: MessageEvent<MatteRequest>) => {
-  const { id, file, publicPath, ortPath, modnetUrl, engine, threads } = e.data;
+  const { id, file, publicPath, ortPath, modnetUrl, engine, threads, refineStrength, refineKappa } = e.data;
   try {
     overrideThreads(threads);
     // 统一先缩到 ≤1024 长边：推理耗时与输入像素无关（@imgly 内部也 resize 到 1024），
@@ -170,11 +202,13 @@ scope.onmessage = async (e: MessageEvent<MatteRequest>) => {
       if (!modnetUrl.startsWith('appres://') && !modnetUrl.startsWith('http')) {
         throw new Error('MODNet 模型 URL 无效');
       }
-      const buf = await runModnet(src, ortPath, modnetUrl);
+      const buf = await runModnet(src, ortPath, modnetUrl, refineStrength ?? 0, refineKappa ?? 0.35);
       scope.postMessage({ id, ok: true, blob: buf } as unknown, [buf]);
       return;
     }
-    // isnet（@imgly，默认）
+    // isnet（@imgly）：其输出是「已合成 alpha 的 PNG」，alpha 已被 premultiply 进像素，
+    // 拿不到未混合的原始 RGB —— 无法做颜色解混。故 ISNet 路径不做边缘精修
+    //（界面已不再暴露该档；`modnet-refine` 才是推荐路径）。
     const config: Config = {
       output: { format: 'image/png' },
       publicPath,

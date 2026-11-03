@@ -49,7 +49,7 @@ export interface PhotoOptions {
   /** 批量默认启用自动构图（抠图完成后自动按规格构图） */
   batchAutoFrame: boolean;
   // ---- 3. 背景与抠图 ----
-  /** 抠图引擎：精细 ISNet / 快速 MODNet */
+  /** 抠图引擎：MODNet + 边缘精修（推荐）/ 快速 MODNet */
   engine: MatteEngine;
   /** 底色 id（BG_OPTIONS） */
   bgId: string;

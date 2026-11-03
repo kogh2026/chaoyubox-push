@@ -2,6 +2,7 @@ import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction
 import { BG_OPTIONS, type BgOption } from '../lib/matting';
 import { PAPER_SIZES, PHOTO_PRESETS, type LayoutResult } from '../lib/cardLayout';
 import { matteEngineUsable, type MatteEngine } from '../lib/mattingPool';
+import { MATTE_ENGINE_UI } from '../lib/matteEngine';
 import type { FramingMetrics, FramingSpec, FramingVerification } from '../lib/specFraming';
 import type { PhotoOptions, SetPhotoOption } from '../lib/idphotoOptions';
 import { PHOTO_SIZE_PRESETS } from '../lib/jpegSize';
@@ -27,8 +28,10 @@ function fmtBatch(seconds: number): string {
   return s < 90 ? `${s} 秒` : `${Math.round(s / 60)} 分钟`;
 }
 
-/** 单张抠图耗时（秒）实测值，仅用于给用户一个量级正确的预估 */
-const SEC_PER_PHOTO_ISNET = 5.8;
+/**
+ * 单张抠图耗时（秒）实测值，仅用于给用户一个量级正确的预估。
+ * MODNet 精修档 = MODNet + 边缘精修（像素运算，实测约 +15%，见 docs/v4-edge-refine.md）。
+ */
 const SEC_PER_PHOTO_MODNET = 0.9;
 
 /** 档位显示名：数值表（WHITEN_LEVELS / BEAUTY_LEVELS）留在 IdPhoto，只有这里要显示中文 */
@@ -311,15 +314,11 @@ export default function IdPhotoRight({
         <div className="idp-row">
           <span>抠图质量</span>
           <div className="seg">
-            {(
-              [
-                { id: 'isnet', label: '精细' },
-                { id: 'modnet', label: '快速' },
-              ] as const
-            ).filter((it) => matteEngineUsable(it.id)).map((it) => (
+            {MATTE_ENGINE_UI.filter((it) => matteEngineUsable(it.id)).map((it) => (
               <button
                 key={it.id}
                 className={'seg-btn' + (engine === it.id ? ' active' : '')}
+                title={it.hint}
                 onClick={() => onEngineChange(it.id)}
               >
                 {it.label}
@@ -327,11 +326,16 @@ export default function IdPhotoRight({
             ))}
           </div>
         </div>
-        <p className="muted">精细发丝更完整，快速更适合大批量处理。</p>
-        {engine === 'isnet' && items.length >= 10 && (
+        <p className="muted">
+          {engine === 'modnet-refine'
+            ? '边缘精修会去掉发丝外沿残留的原底色晕边，保留透明白边；批量处理请用「快速」。'
+            : '不修边缘，速度最快；批量处理推荐用这个。'}
+        </p>
+        {engine === 'modnet-refine' && items.length >= 10 && (
           <button type="button" className="idp-tip" onClick={() => onEngineChange('modnet')}>
-            已导入 {items.length} 张：「精细」约需 {fmtBatch(items.length * SEC_PER_PHOTO_ISNET)}，
-            点这里切「快速」约 {fmtBatch(items.length * SEC_PER_PHOTO_MODNET)}（4 核实测，快约 6 倍）
+            已导入 {items.length} 张：「MODNet + 边缘精修」约需{' '}
+            {fmtBatch(items.length * SEC_PER_PHOTO_MODNET * 1.15)}，
+            点这里切「快速」约 {fmtBatch(items.length * SEC_PER_PHOTO_MODNET)}（4 核实测）
           </button>
         )}
         <div className="idp-swatches">

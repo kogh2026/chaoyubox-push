@@ -96,7 +96,7 @@ describe('normalizePhotoOptions —— 脏数据不许越过字段边界', () =>
       whitenLevel: 'white',
       sheetMode: 'both',
     });
-    expect(o.engine).toBe('modnet'); // 默认已改为「快速」
+    expect(o.engine).toBe('modnet-refine'); // 默认档 = MODNet + 边缘精修
     expect(o.specMode).toBe('default');
     expect(o.beautyLevel).toBe('natural');
     expect(o.whitenLevel).toBe('natural');
@@ -189,14 +189,14 @@ describe('load / save / clear', () => {
  * 读回时会原样盖掉新默认 —— 表现就是「代码改了、装上新版还是精细」。
  * 这一组用例锁住「升级时这两项一次性归位、其他偏好不动」。
  */
-describe('存档迁移 v1 → v2', () => {
+describe('存档迁移 v1 → v2 → v3', () => {
   const v1 = (extra: Record<string, unknown> = {}) =>
     JSON.stringify({ schemaVersion: 1, engine: 'isnet', defringeOn: false, ...extra });
 
-  it('v1 存档：engine 归位到「快速」、defringeOn 归位到「开」', () => {
+  it('v1 存档：engine 归位到默认档「MODNet + 边缘精修」、defringeOn 归位到「开」', () => {
     store.seed(KEY, v1());
     const o = loadPhotoOptions();
-    expect(o.engine).toBe('modnet');
+    expect(o.engine).toBe('modnet-refine');
     expect(o.defringeOn).toBe(true);
   });
 
@@ -218,19 +218,25 @@ describe('存档迁移 v1 → v2', () => {
     loadPhotoOptions();
     const saved = JSON.parse(store.getItem(KEY) as string);
     expect(saved.schemaVersion).toBe(CURRENT_OPTIONS_SCHEMA);
-    expect(saved.engine).toBe('modnet');
+    expect(saved.engine).toBe('modnet-refine');
     expect(saved.defringeOn).toBe(true);
   });
 
   it('缺 schemaVersion 的更老存档同样按 v1 迁移', () => {
     store.seed(KEY, JSON.stringify({ engine: 'isnet' }));
-    expect(loadPhotoOptions().engine).toBe('modnet');
+    expect(loadPhotoOptions().engine).toBe('modnet-refine');
   });
 
-  it('v2 存档尊重用户主动选择（用户就是要精细，不许再改回来）', () => {
+  it('v2 存档里的 isnet 归一到 modnet-refine（用户要的是「精细」，不是特定模型）', () => {
     store.seed(KEY, JSON.stringify({ schemaVersion: 2, engine: 'isnet', defringeOn: false }));
     const o = loadPhotoOptions();
-    expect(o.engine).toBe('isnet');
+    expect(o.engine).toBe('modnet-refine');
+  });
+
+  it('v3 存档尊重用户主动选择（用户就是要「快速」，不许再改回来）', () => {
+    store.seed(KEY, JSON.stringify({ schemaVersion: 3, engine: 'modnet', defringeOn: false }));
+    const o = loadPhotoOptions();
+    expect(o.engine).toBe('modnet');
     expect(o.defringeOn).toBe(false);
   });
 

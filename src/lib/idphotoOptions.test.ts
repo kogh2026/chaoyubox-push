@@ -28,7 +28,7 @@ describe('DEFAULT_PHOTO_OPTIONS：默认档的唯一真相', () => {
         "customHex": "#ffffff",
         "defringeOn": true,
         "edgeThreshold": 30,
-        "engine": "modnet",
+        "engine": "modnet-refine",
         "exportSizeIds": [
           "1cun",
         ],
@@ -53,7 +53,7 @@ describe('DEFAULT_PHOTO_OPTIONS：默认档的唯一真相', () => {
     expect(DEFAULT_PHOTO_OPTIONS.beautyLevel).toBe('natural'); // 与爱印一致的可选默认档
     expect(DEFAULT_PHOTO_OPTIONS.paperId).toBe('r6'); // 6 寸相纸
     expect(DEFAULT_PHOTO_OPTIONS.gapMm).toBe(2); // 2mm 间隔
-    expect(DEFAULT_PHOTO_OPTIONS.engine).toBe('modnet'); // 默认快速：50 张 45s vs 288s，量大时体感差异
+    expect(DEFAULT_PHOTO_OPTIONS.engine).toBe('modnet-refine'); // 默认档 = MODNet + 边缘精修（MODNet 与爱印同款模型，见 docs/matting-vs-aiyin.md）
     expect(DEFAULT_PHOTO_OPTIONS.defringeOn).toBe(true); // 去边缘默认开
     expect(DEFAULT_PHOTO_OPTIONS.batchAutoFrame).toBe(true); // 批量默认自动构图
     // 导出集合默认只含当前规格，两者必须一致，否则「勾了 A 导出 B」

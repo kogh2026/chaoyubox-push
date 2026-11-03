@@ -491,7 +491,23 @@ export async function matte(input: MatteInput, onProgress?: ProgressFn): Promise
   return removeBackground(input, config);
 }
 
+/* ===== 边缘精修：消除换底后发丝处残留的原底色 ===== */
+
 /* ===== F14：抠图结果缓存（同一张原图的多规格只抠一次） ===== */
+
+/*
+ * 注意：边缘精修**不在主线程做**（曾试过，已废弃）。
+ *
+ * 原因：主线程拿到抠图输出的透明 PNG 后，只能经 canvas `getImageData` 读像素，
+ * 而 canvas 内部是 premultiplied 存储 —— alpha=0 的像素 RGB 会被清零。
+ * 那片区域恰恰是**估计原底色 B 的唯一可靠来源**（alpha≈0 = 确定是背景）。
+ * 实测 25 张全部估出 (0,0,0)，解混结果全错。
+ *
+ * 现在的做法：精修在 `matting.worker.ts` 的 `refineInWorker` 内就地完成 ——
+ * 那里原始 RGBA（未被 premultiply）与 alpha 蒙版都在手上。
+ * 算法口径与 `src/lib/edgeRefine.ts` 一致（那边保留为参考实现与单测载体）。
+ */
+
 
 // 对象输入（Blob/File/HTMLImageElement）用 WeakMap：对象被回收时缓存自动释放，不泄漏。
 let matteWeak = new WeakMap<object, Promise<Blob>>();

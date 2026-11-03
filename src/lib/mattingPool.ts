@@ -9,13 +9,21 @@ import { matte, mattingPublicPath, mattingOrtPath, modnetModelUrl, type MatteInp
 import MattingWorker from './matting.worker.ts?worker';
 
 /** 抠图引擎类型与默认值都在 `matteEngine.ts`（那边不依赖 @imgly，谁都能安全引）；这里 re-export 保持旧导入路径可用 */
-import { DEFAULT_MATTE_ENGINE, type MatteEngine } from './matteEngine';
+import {
+  DEFAULT_MATTE_ENGINE,
+  engineNeedsRefine,
+  engineWorkerName,
+  type MatteEngine,
+} from './matteEngine';
 export type { MatteEngine };
 export { DEFAULT_MATTE_ENGINE };
 
 let currentEngine: MatteEngine = DEFAULT_MATTE_ENGINE;
 export function setMatteEngine(e: MatteEngine): void {
   currentEngine = e;
+  // 引擎决定是否做边缘精修：`modnet-refine` 开，其余关。
+  // 这样「开关」与「引擎」永远一致，不会出现面板显示精修、实际没跑的错位。
+  edgeRefineStrength = engineNeedsRefine(e) ? EDGE_REFINE_DEFAULT_STRENGTH : 0;
 }
 export function getMatteEngine(): MatteEngine {
   return currentEngine;
@@ -181,7 +189,14 @@ class MattePool {
         publicPath: mattingPublicPath(),
         ortPath: mattingOrtPath(),
         modnetUrl: modnetModelUrl(),
-        engine: currentEngine,
+        // `modnet-refine` 在推理阶段就是 MODNet —— 边缘精修是推理之后的像素运算，
+        // 不需要另跑一个模型。这样「精修档」既快又无额外模型依赖。
+        engine: engineWorkerName(currentEngine),
+        // 边缘精修在 Worker 内就地做（颜色解混）。必须在 Worker 里做：
+        // 主线程经 canvas 读 PNG 时 alpha=0 区域的 RGB 会被 premultiply 清零，
+        // 那片区域恰恰是估计原底色的唯一可靠来源。
+        refineStrength: edgeRefineStrength,
+        refineKappa: EDGE_REFINE_KAPPA,
         threads: this.threads ?? matteThreads(parallel),
       });
     }
@@ -231,7 +246,39 @@ class MattePool {
 
 let pool: MattePool | null = null;
 
-/** 抠图入口：自动走 Worker 池；不支持时回退主线程。可直接作为 cachedMatte 的 runner。 */
+/**
+ * 边缘精修强度（0~1），0 = 关闭。
+ *
+ * 为什么放在池外而不是 Worker 内：精修是纯 CPU 逐像素运算，跑在主线程会卡 UI；
+ * 但它的开销远小于模型推理（见 docs/v4-edge-refine.md 的实测），且放在主线程
+ * 能复用同一份 canvas，避开 Worker↔主线程的 Blob 传输开销。
+ */
+let edgeRefineStrength = 0;
+
+/** 边缘精修默认强度（`modnet-refine` 引擎用）。实测 0.8 已能清掉绝大部分晕边且不伤细节。 */
+export const EDGE_REFINE_DEFAULT_STRENGTH = 0.8;
+
+/** 边缘精修激进度（越小越激进）。0.35 为实测平衡点：低 alpha 修得够狠、噪点可控。 */
+export const EDGE_REFINE_KAPPA = 0.35;
+
+/** 设置边缘精修强度（0~1）。0 = 关闭。 */
+export function setEdgeRefineStrength(s: number): void {
+  edgeRefineStrength = Math.max(0, Math.min(1, s));
+}
+
+/** 读取当前边缘精修强度。 */
+export function getEdgeRefineStrength(): number {
+  return edgeRefineStrength;
+}
+
+/**
+ * 抠图入口：自动走 Worker 池；不支持时回退主线程。可直接作为 cachedMatte 的 runner。
+ *
+ * 边缘精修在 **Worker 内**就地完成（见 `matting.worker.ts` 的 `refineInWorker`）：
+ * 主线程若想自己做，必须经 canvas 读 PNG，而 canvas 是 premultiplied 存储 ——
+ * alpha=0 区域的 RGB 会被清零，那片区域恰恰是估计原底色的唯一可靠来源，
+ * 估出来会是 (0,0,0)，解混全错。
+ */
 export function poolMatte(input: MatteInput, onProgress?: ProgressFn): Promise<Blob> {
   if (!pool) pool = new MattePool();
   return pool.run(input, onProgress);

@@ -25,6 +25,7 @@ import {
   revealIfWanted,
 } from '../lib/exporter';
 import { poolMatte, setMatteEngine, type MatteEngine } from '../lib/mattingPool';
+import { engineNeedsRefine } from '../lib/matteEngine';
 import { fitJpegBlob, sizeTargetName, sizeTargetOf } from '../lib/jpegSize';
 import {
   inspectAll,
@@ -349,17 +350,23 @@ export default function IdPhoto() {
   );
 
   const retouch: RetouchOpts = useMemo(() => {
+    // 边缘处理只用一套机制：
+    // - `modnet-refine` 引擎 → 走新的颜色解混精修（在抠图后、换底前做，见 lib/edgeRefine.ts）
+    // - 其余引擎 → 走旧的 defringe（把边缘 RGB 换成邻居纯色）
+    // 两者**不能同时开**：旧 defringe 会把边缘颜色整体抹平，正好抵消解混还原出来的
+    // 发丝本色（实测细节保持率会从 1.0 掉到 0.96，残留不降反升）。
+    const useNewRefine = engineNeedsRefine(options.engine);
     return {
       bg: bg.id === 'custom' ? { ...bg, hex: customHex } : bg,
       whiten: whitenOn ? WHITEN_LEVELS[whitenLevel] : 0,
       warm: whitenOn && whitenLevel === 'rosy' ? 0.2 : 0,
       brightness,
       edgeThreshold,
-      defringe: defringeOn ? 0.7 : 0,
+      defringe: !useNewRefine && defringeOn ? 0.7 : 0,
       // 专业档接管平滑：经典美颜强制 0，避免两套平滑串联
       beauty: advOn ? 0 : BEAUTY_LEVELS[beautyLevel],
     };
-  }, [bg, customHex, whitenOn, whitenLevel, brightness, edgeThreshold, defringeOn, beautyLevel, advOn]);
+  }, [bg, customHex, whitenOn, whitenLevel, brightness, edgeThreshold, defringeOn, beautyLevel, advOn, options.engine]);
 
   /** 三档参数（0..1）；专业档关闭时全 0 → 适配层直接返回原图，零开销 */
   const advOpts = useMemo(
@@ -439,9 +446,9 @@ export default function IdPhoto() {
     [setOption],
   );
 
-  // 设置项会跨会话保留，但 `mattingPool` 的引擎是**模块级变量**（默认恒 isnet），
-  // 不走 onEngineChange 就不会被纠正。不同步的话，上次选了「快速」的用户这次开机
-  // 面板显示「快速」、实际仍跑精细 ISNet —— 批量 50 张会从 45s 变 288s 且无处可查。
+  // 设置项会跨会话保留，但 `mattingPool` 的引擎是**模块级变量**，
+  // 不走 onEngineChange 就不会被纠正。不同步的话，上次选了某个档的用户这次开机
+  // 面板显示该档、实际仍跑默认档 —— 批量 50 张耗时可能从 45s 变 288s 且无处可查。
   // 只在挂载跑一次：之后的变更都由 onEngineChange 负责。
   useEffect(() => {
     setMatteEngine(options.engine);
