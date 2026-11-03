@@ -135,13 +135,13 @@ function loadImageFromSrc(src: string): Promise<HTMLImageElement> {
 }
 
 /** 直接由已解码的图片 + dataURL 构造一条可导出条目（用于示例照片 / 粘贴） */
-function itemFromImage(img: HTMLImageElement, dataUrl: string, name: string): CardItem {
+function itemFromImage(img: HTMLImageElement, dataUrl: string, name: string, typeId = 'idcard'): CardItem {
   return {
     key: KEY++,
     name,
     img,
     dataUrl,
-    type: 'idcard',
+    type: typeId,
     rotation: 0,
     checked: true,
     copies: 1,
@@ -151,37 +151,83 @@ function itemFromImage(img: HTMLImageElement, dataUrl: string, name: string): Ca
   };
 }
 
-/** 生成一张「示例证件照」dataURL（蓝底卡片 + 照片框 + 占位文字），仅用于界面演示 */
-function genSampleCardDataUrl(): string {
+// 各类型示例卡的配色与文案（仅用于界面演示，非真实证件）
+const SAMPLE_PALETTE: Record<string, [string, string]> = {
+  idcard: ['#e8f0ff', '#c6dcff'],
+  passport: ['#ffe9e9', '#ffcfcf'],
+  drive: ['#ffffff', '#eef2f7'],
+  hukou: ['#eafaf0', '#cdeedd'],
+  other: ['#f3f1ff', '#ded7ff'],
+};
+const SAMPLE_TITLE: Record<string, string> = {
+  idcard: '居民身份证',
+  passport: '护照 PASSPORT',
+  drive: '机动车驾驶证',
+  hukou: '常住人口登记卡',
+  other: '证件示例',
+};
+const SAMPLE_FIELDS: Record<string, string[]> = {
+  idcard: ['姓名：示例 用户', '性别：男    民族：汉', '出生：1990 年 1 月 1 日', '住址：示例市示例区示例路 1 号', '公民身份号码：******************'],
+  passport: ['类型：P    国家代码：CHN', '姓名：SAMPLE USER', '性别：M    出生：1990-01-01', '护照号：E12345678', '签发：2020-01-01  有效至：2030-01-01'],
+  drive: ['姓名：示例 用户', '国籍：中国    性别：男', '住址：示例市示例区示例路 1 号', '出生：1990-01-01', '准驾车型：C1    有效期限：6 年'],
+  hukou: ['户别：家庭户口', '姓名：示例 用户    性别：男', '出生：1990 年 1 月 1 日', '民族：汉', '住址：示例市示例区示例路 1 号', '公民身份号码：******************'],
+  other: ['姓名：示例 用户', '编号：********', '备注：演示用样例'],
+};
+
+/** 生成一张「示例证件」dataURL：按类型渲染逼真卡片（正确长宽比 + 类型化版式），仅用于界面演示 */
+function genSampleCardDataUrl(typeId: string): string {
+  const t = cardTypeOf(typeId);
+  const W = Math.max(420, Math.round(t.w * 10));
+  const H = Math.max(266, Math.round(t.h * 10));
   const c = document.createElement('canvas');
-  c.width = 856;
-  c.height = 540;
+  c.width = W;
+  c.height = H;
   const x = c.getContext('2d')!;
-  const g = x.createLinearGradient(0, 0, c.width, c.height);
-  g.addColorStop(0, '#dfe9ff');
-  g.addColorStop(1, '#b9d0ff');
+  const [c1, c2] = SAMPLE_PALETTE[typeId] ?? SAMPLE_PALETTE.other;
+  const g = x.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, c1);
+  g.addColorStop(1, c2);
   x.fillStyle = g;
-  x.fillRect(0, 0, c.width, c.height);
+  x.fillRect(0, 0, W, H);
+  x.strokeStyle = 'rgba(0,0,0,.25)';
+  x.lineWidth = Math.max(2, W * 0.004);
+  x.strokeRect(W * 0.012, H * 0.012, W * 0.976, H * 0.976);
+
+  x.textBaseline = 'top';
+  // 标题
+  x.fillStyle = '#1f2d4d';
+  x.font = `bold ${Math.round(H * 0.07)}px sans-serif`;
+  x.fillText(SAMPLE_TITLE[typeId] ?? '证件示例', W * 0.04, H * 0.04);
+
+  // 照片框（左侧竖版）
+  const pw = W * 0.26;
+  const ph = H * 0.5;
+  const px = W * 0.04;
+  const py = H * 0.2;
   x.fillStyle = '#ffffff';
-  x.fillRect(48, 70, 220, 260);
+  x.fillRect(px, py, pw, ph);
   x.fillStyle = '#cdd8ee';
-  x.fillRect(72, 96, 172, 208);
+  x.fillRect(px + pw * 0.15, py + ph * 0.12, pw * 0.7, ph * 0.6);
+
+  // 字段（右侧）
+  const fields = SAMPLE_FIELDS[typeId] ?? SAMPLE_FIELDS.other;
   x.fillStyle = '#33415c';
-  x.font = 'bold 36px sans-serif';
-  x.fillText('示例证件照', 320, 140);
-  x.fillStyle = '#5a6b8c';
-  x.font = '24px sans-serif';
-  x.fillText('姓名：示例用户', 320, 210);
-  x.fillText('证件号：****************', 320, 264);
-  x.fillText('仅供界面演示 · 本地处理', 320, 318);
-  x.strokeStyle = '#9bb4e6';
-  x.lineWidth = 4;
-  x.strokeRect(2, 2, c.width - 4, c.height - 4);
+  x.font = `${Math.round(H * 0.045)}px sans-serif`;
+  const fx = W * 0.34;
+  const fy0 = H * 0.22;
+  const lh = H * 0.082;
+  fields.forEach((f, i) => x.fillText(f, fx, fy0 + i * lh));
+
+  // 底部标注
+  x.fillStyle = 'rgba(0,0,0,.4)';
+  x.font = `${Math.round(H * 0.035)}px sans-serif`;
+  x.fillText('仅供界面演示 · 本地生成 · 不上传', W * 0.04, H * 0.9);
   return c.toDataURL('image/png');
 }
 
-/** localStorage 模板键（存为模板 / 应用模板） */
-const TPL_KEY = 'chaoyu.idcard.template';
+/** localStorage 模板键（命名模板列表） */
+const TPL_LIST_KEY = 'chaoyu.idcard.templates';
+const TPL_LEGACY_KEY = 'chaoyu.idcard.template'; // 兼容旧单键
 
 /** 模板可序列化的排版设置（与 saveTemplate/applyTemplate 对应） */
 interface LayoutTemplate {
@@ -201,6 +247,38 @@ interface LayoutTemplate {
   wmText: string;
   algo: LayoutAlgo;
   cropMarks: boolean;
+}
+
+/** 已保存的命名模板 */
+interface SavedTemplate {
+  id: string;
+  name: string;
+  tpl: LayoutTemplate;
+  ts: number;
+}
+
+/** 从 localStorage 读模板列表（兼容旧的单键数据） */
+function loadTemplates(): SavedTemplate[] {
+  try {
+    const raw = localStorage.getItem(TPL_LIST_KEY);
+    if (raw) return JSON.parse(raw) as SavedTemplate[];
+    const legacy = localStorage.getItem(TPL_LEGACY_KEY);
+    if (legacy) {
+      const t = JSON.parse(legacy) as LayoutTemplate;
+      return [{ id: 'legacy', name: '模板 1', tpl: t, ts: 0 }];
+    }
+  } catch {
+    /* 解析失败按空处理 */
+  }
+  return [];
+}
+
+/** 模板时间格式化（相对/绝对混合，简洁） */
+function fmtTplTime(ts: number): string {
+  if (!ts) return '较早';
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** 经典 CV 路径：一张图 → 0..N 条卡（检测+多卡拆分） */
@@ -333,13 +411,7 @@ export default function CardLayout() {
   const [notice, setNotice] = useState(true);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [hasTemplate, setHasTemplate] = useState(() => {
-    try {
-      return !!localStorage.getItem(TPL_KEY);
-    } catch {
-      return false;
-    }
-  });
+  const [templates, setTemplates] = useState<SavedTemplate[]>(() => loadTemplates());
   const [isFs, setIsFs] = useState(false); // 全屏态
   const [cropKey, setCropKey] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -546,19 +618,40 @@ export default function CardLayout() {
     enqueueOcr(added);
   }
 
-  // 试试示例照片：本地合成一张演示卡面，直接进排版（不经过检测）
-  async function addSample() {
+  // 试试示例照片：本地合成一张指定类型的演示卡面，直接进排版（不经过检测）
+  async function addSample(typeId = 'idcard') {
     try {
-      const dataUrl = genSampleCardDataUrl();
+      const dataUrl = genSampleCardDataUrl(typeId);
       const img = await loadImageFromSrc(dataUrl);
-      setItems((prev) => [...prev, itemFromImage(img, dataUrl, `示例证件照 ${prev.length + 1}`)]);
-      setMsg('已添加示例证件照（演示用，本地生成）');
+      const label = cardTypeOf(typeId).name;
+      setItems((prev) => [...prev, itemFromImage(img, dataUrl, `${label} 示例`, typeId)]);
+      setMsg(`已添加示例：${label}（演示用，本地生成）`);
     } catch {
       setMsg('示例照片生成失败');
     }
   }
 
-  // 存为模板：把当前排版相关设置序列化进 localStorage
+  // 套用一份模板设置（被「应用模板」「应用模板(byId)」共用）
+  function applyTpl(t: Partial<LayoutTemplate>) {
+    if (t.paperId) setPaperId(t.paperId);
+    if (t.orient) setOrient(t.orient);
+    if (t.perPage !== undefined) setPerPage(t.perPage);
+    if (t.gap !== undefined) setGap(t.gap);
+    if (t.shrink !== undefined) setShrink(t.shrink);
+    if (t.pos) setPos(t.pos);
+    if (t.offX !== undefined) setOffX(t.offX);
+    if (t.offY !== undefined) setOffY(t.offY);
+    if (t.colorMode) setColorMode(t.colorMode);
+    if (t.sat !== undefined) setSat(t.sat);
+    if (t.sharpen !== undefined) setSharpen(t.sharpen);
+    if (t.roundMm !== undefined) setRoundMm(t.roundMm);
+    if (t.wmOn !== undefined) setWmOn(t.wmOn);
+    if (t.wmText !== undefined) setWmText(t.wmText);
+    if (t.algo) setAlgo(t.algo);
+    if (t.cropMarks !== undefined) setCropMarks(t.cropMarks);
+  }
+
+  // 存为模板：把当前排版设置命名追加进 localStorage 列表
   function saveTemplate() {
     const tpl: LayoutTemplate = {
       paperId,
@@ -578,44 +671,52 @@ export default function CardLayout() {
       algo,
       cropMarks,
     };
+    const entry: SavedTemplate = {
+      id: `${Date.now()}`,
+      name: `模板 ${templates.length + 1}`,
+      tpl,
+      ts: Date.now(),
+    };
+    const next = [...templates, entry];
     try {
-      localStorage.setItem(TPL_KEY, JSON.stringify(tpl));
-      setHasTemplate(true);
-      setMsg('已存为模板（本地保存）');
+      localStorage.setItem(TPL_LIST_KEY, JSON.stringify(next));
+      setTemplates(next);
+      setMsg(`已存为模板：${entry.name}（本地保存）`);
     } catch {
       setMsg('保存模板失败');
     }
   }
 
-  // 应用模板：从 localStorage 读回并套用
-  function applyTemplate() {
-    try {
-      const raw = localStorage.getItem(TPL_KEY);
-      if (!raw) {
-        setMsg('暂无已存模板');
-        return;
-      }
-      const t = JSON.parse(raw) as Partial<LayoutTemplate>;
-      if (t.paperId) setPaperId(t.paperId);
-      if (t.orient) setOrient(t.orient);
-      if (t.perPage !== undefined) setPerPage(t.perPage);
-      if (t.gap !== undefined) setGap(t.gap);
-      if (t.shrink !== undefined) setShrink(t.shrink);
-      if (t.pos) setPos(t.pos);
-      if (t.offX !== undefined) setOffX(t.offX);
-      if (t.offY !== undefined) setOffY(t.offY);
-      if (t.colorMode) setColorMode(t.colorMode);
-      if (t.sat !== undefined) setSat(t.sat);
-      if (t.sharpen !== undefined) setSharpen(t.sharpen);
-      if (t.roundMm !== undefined) setRoundMm(t.roundMm);
-      if (t.wmOn !== undefined) setWmOn(t.wmOn);
-      if (t.wmText !== undefined) setWmText(t.wmText);
-      if (t.algo) setAlgo(t.algo);
-      if (t.cropMarks !== undefined) setCropMarks(t.cropMarks);
-      setMsg('已应用模板');
-    } catch {
-      setMsg('模板数据损坏，无法应用');
+  // 应用指定模板（按 id）
+  function applyTemplateById(id: string) {
+    const e = templates.find((x) => x.id === id);
+    if (!e) {
+      setMsg('模板不存在或已删除');
+      return;
     }
+    applyTpl(e.tpl);
+    setMsg(`已应用：${e.name}`);
+  }
+
+  // 删除模板（按 id）
+  function deleteTemplate(id: string) {
+    const next = templates.filter((x) => x.id !== id);
+    try {
+      localStorage.setItem(TPL_LIST_KEY, JSON.stringify(next));
+      setTemplates(next);
+      setMsg('已删除模板');
+    } catch {
+      setMsg('删除失败');
+    }
+  }
+
+  // 应用模板：中栏快捷按钮 → 套用最近保存的一份
+  function applyTemplate() {
+    if (templates.length === 0) {
+      setMsg('暂无已存模板');
+      return;
+    }
+    applyTemplateById(templates[templates.length - 1].id);
   }
 
   // 全屏：在「中栏画布区」与原窗口之间切换
@@ -950,8 +1051,17 @@ export default function CardLayout() {
           <div className="icw-upload-title">添加证件照片</div>
           <div className="icw-upload-grid">
             <button onClick={() => inputRef.current?.click()}>选择照片</button>
-            <button onClick={() => void addSample()}>试试示例照片</button>
             <button onClick={() => folderRef.current?.click()}>扫描文件夹</button>
+          </div>
+          <div className="icw-upload-samples">
+            <div className="icw-upload-samples-h">试试示例照片（本地生成，不上传）：</div>
+            <div className="icw-upload-grid">
+              {CARD_TYPES.map((ct) => (
+                <button key={ct.id} onClick={() => void addSample(ct.id)} title={`添加一张${ct.name}示例`}>
+                  {ct.name}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="icw-upload-hint">
             支持 <kbd>Ctrl</kbd>+<kbd>V</kbd> 直接粘贴截图 / 照片
@@ -1194,9 +1304,9 @@ export default function CardLayout() {
             </button>
             <button
               className="btn"
-              disabled={!hasTemplate}
+              disabled={templates.length === 0}
               onClick={applyTemplate}
-              title={hasTemplate ? '套用已保存的本地模板' : '暂无已存模板'}
+              title={templates.length ? '套用最近保存的本地模板' : '暂无已存模板'}
             >
               应用模板
             </button>
@@ -1470,6 +1580,35 @@ export default function CardLayout() {
               onChange={(e) => setWmText(e.target.value)}
               placeholder="水印文字"
             />
+          )}
+        </div>
+
+        <div className="icw-sec">
+          <h4>拼版模板</h4>
+          <button className="btn primary block" onClick={saveTemplate}>
+            存为模板（当前排版）
+          </button>
+          {templates.length === 0 ? (
+            <p className="icw-tpl-empty">暂无已存模板。调好排版后点上方按钮即可保存，方便下次一键套用。</p>
+          ) : (
+            <div className="icw-tpl-list">
+              {templates.map((e) => (
+                <div className="icw-tpl-item" key={e.id}>
+                  <div className="icw-tpl-meta">
+                    <b>{e.name}</b>
+                    <span className="muted">{fmtTplTime(e.ts)}</span>
+                  </div>
+                  <div className="icw-tpl-ops">
+                    <button className="btn" onClick={() => applyTemplateById(e.id)}>
+                      应用
+                    </button>
+                    <button className="btn del" onClick={() => deleteTemplate(e.id)}>
+                      删除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

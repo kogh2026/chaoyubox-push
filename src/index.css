@@ -132,6 +132,21 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .icw-upload-hint kbd { background: #eef1f5; border-radius: 4px; padding: 0 5px; font-size: 11px; }
 .ph-privacy { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; background: #f3f6fb; border-radius: 8px; padding: 6px 8px; }
 .ph-privacy b { color: #3a4a6b; }
+/* 示例照片类型选择 */
+.icw-upload-samples { margin-top: 10px; }
+.icw-upload-samples-h { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+/* 拼版模板卡片 */
+.btn.block { width: 100%; justify-content: center; }
+.btn.del { color: var(--danger); border-color: var(--danger); }
+.btn.del:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
+.icw-tpl-empty { font-size: 11px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
+.icw-tpl-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.icw-tpl-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: #fff; }
+.icw-tpl-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.icw-tpl-meta b { font-size: 12px; }
+.icw-tpl-meta .muted { font-size: 10px; }
+.icw-tpl-ops { display: flex; gap: 6px; flex-shrink: 0; }
+.icw-tpl-ops .btn { padding: 3px 10px; font-size: 12px; }
 .icw-col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 .icw-left { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh / var(--ui-zoom, 1) - 72px); overflow-y: auto; }
 .icw-center { display: flex; flex-direction: column; gap: 10px; }
