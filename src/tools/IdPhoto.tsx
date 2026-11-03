@@ -1134,7 +1134,18 @@ export default function IdPhoto() {
   const allChecked = items.length > 0 && checked.size === items.length;
 
   return (
-    <div className="idp">
+    <div className="tool-shell">
+      {/* ===== 工具级顶栏（只保留工具标识；原爱印的试用/剩余天数/开通按钮不复刻） ===== */}
+      <div className="icw-topbar">
+        <div className="icw-brand">
+          <span className="icw-logo">📷</span>
+          <span className="icw-brand-name">
+            证件照批量处理<em>（增强模型）</em>
+          </span>
+        </div>
+      </div>
+
+      <div className="idp">
       {/* 左栏：工具栏 + 照片缩略图网格 */}
       <IdPhotoLeft
         items={items}
@@ -1281,6 +1292,7 @@ export default function IdPhoto() {
           onClose={() => setFramingId(null)}
         />
       )}
+      </div>
     </div>
   );
 }

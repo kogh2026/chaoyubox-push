@@ -399,22 +399,11 @@ export default function BatchPrint({ onOpenPrice }: { onOpenPrice?: () => void }
 
   return (
     <>
-      {/* ===== 工具级顶栏（对齐爱印：标题 + 试用状态 + 开通） ===== */}
+      {/* ===== 工具级顶栏（只保留工具标识；原爱印的试用标签/剩余天数/开通按钮不复刻） ===== */}
       <div className="icw-topbar">
         <div className="icw-brand">
           <span className="icw-logo">🖨</span>
-          <span className="icw-brand-name">
-            批量打印 <span className="bp-trial-tag">试用</span>
-          </span>
-        </div>
-        <div className="icw-topbar-right">
-          <span className="icw-trial" title="演示版剩余可用天数">剩余 25 天</span>
-          <button
-            className="btn primary"
-            onClick={() => showToast('开通入口为占位：桌面端接入支付后可用')}
-          >
-            开通
-          </button>
+          <span className="icw-brand-name">批量打印</span>
         </div>
       </div>
       <div

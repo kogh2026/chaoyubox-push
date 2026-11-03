@@ -418,11 +418,14 @@ export default function CardLayout() {
   const [cropKey, setCropKey] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
+  const tplImportRef = useRef<HTMLInputElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   // 把 handleFiles 存进 ref，供全局粘贴监听调用，避免闭包拿到过期状态
   const importRef = useRef<(f: FileList | File[] | null) => void>(() => {});
   importRef.current = handleFiles;
+  // 把最新版的 doExportPdf 存进 ref，供 Ctrl+S 监听调用（避免闭包拿到首次渲染的状态）
+  const exportPdfRef = useRef<() => void>(() => {});
 
   const paper = useMemo(() => paperSize(paperId, orient), [paperId, orient]);
   const checked = useMemo(() => items.filter((i) => i.checked), [items]);
@@ -747,6 +750,75 @@ export default function CardLayout() {
     applyTemplateById(templates[templates.length - 1].id);
   }
 
+  // 导出模板：把所有模板序列化成一个 JSON 文件下载到本地（便于备份/迁移）
+  function exportTemplates() {
+    if (templates.length === 0) {
+      setMsg('没有可导出的模板');
+      return;
+    }
+    try {
+      const payload = {
+        app: 'chaoyu.idcard',
+        kind: 'layout-templates',
+        version: 1,
+        exportedAt: Date.now(),
+        templates,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.download = `证卡拼版模板_${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsg(`已导出 ${templates.length} 个模板`);
+    } catch {
+      setMsg('导出模板失败');
+    }
+  }
+
+  // 导入模板：读取 JSON 文件，把其中的模板合并进当前列表（重生成 id 避免冲突）
+  function importTemplatesFromJson(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result));
+        const incoming: unknown = Array.isArray(data) ? data : (data as { templates?: unknown }).templates;
+        if (!Array.isArray(incoming)) {
+          setMsg('模板文件格式不正确');
+          return;
+        }
+        const now = Date.now();
+        const merged = [...templates];
+        let added = 0;
+        for (const t of incoming as Array<Record<string, unknown>>) {
+          if (!t || typeof t !== 'object' || !t.tpl) continue;
+          merged.push({
+            id: `${now}-${added}`,
+            name: typeof t.name === 'string' && t.name.trim() ? t.name : `模板 ${merged.length + 1}`,
+            tpl: t.tpl as LayoutTemplate,
+            ts: typeof t.ts === 'number' ? t.ts : now,
+          });
+          added++;
+        }
+        if (added === 0) {
+          setMsg('未从文件中找到可用模板');
+          return;
+        }
+        localStorage.setItem(TPL_LIST_KEY, JSON.stringify(merged));
+        setTemplates(merged);
+        setMsg(`已导入 ${added} 个模板`);
+      } catch {
+        setMsg('模板文件解析失败');
+      }
+    };
+    reader.onerror = () => setMsg('读取模板文件失败');
+    reader.readAsText(file);
+  }
+
   // 全屏：在「中栏画布区」与原窗口之间切换
   function toggleFullscreen() {
     const el = centerRef.current;
@@ -845,15 +917,28 @@ export default function CardLayout() {
         void importRef.current(files);
       }
     };
+    // Ctrl/Cmd+S：拦截浏览器「保存网页」，改为直接导出当前拼版 PDF（全屏下也能用）
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (pages.length === 0) {
+          setMsg('还没有可导出的页面');
+          return;
+        }
+        exportPdfRef.current();
+      }
+    };
     document.addEventListener('fullscreenchange', onFsChange);
     window.addEventListener('paste', onPaste);
+    window.addEventListener('keydown', onKey);
     // 扫描文件夹：webkitdirectory 非标准属性，用 setAttribute 规避 JSX 类型问题
     if (folderRef.current) folderRef.current.setAttribute('webkitdirectory', '');
     return () => {
       document.removeEventListener('fullscreenchange', onFsChange);
       window.removeEventListener('paste', onPaste);
+      window.removeEventListener('keydown', onKey);
     };
-  }, []);
+  }, [pages.length]);
 
   useEffect(() => {
     return () => {
@@ -949,6 +1034,8 @@ export default function CardLayout() {
         .finally(() => setBusy(false));
     }, 30);
   }
+  // 每轮渲染都把最新 doExportPdf 闭包写进 ref，供 Ctrl+S 监听取用（避免拿到过期状态）
+  exportPdfRef.current = doExportPdf;
 
   // 打印：与导出同源的矢量拼版 PDF → 主进程 PDFium 静默直出（纸张跟随 PDF）；
   // 矢量编码不可用时回退 300DPI 整页位图，保证任何环境下都能出纸
@@ -1053,22 +1140,13 @@ export default function CardLayout() {
 
   return (
     <div className="icw">
-      {/* ===== 工具级顶栏（对齐爱印：标题 + 试用状态 + 升级） ===== */}
+      {/* ===== 工具级顶栏（只保留工具标识；原爱印的试用/剩余天数/开通按钮不复刻） ===== */}
       <div className="icw-topbar">
         <div className="icw-brand">
           <span className="icw-logo">🪪</span>
           <span className="icw-brand-name">
             证卡拼版助手<em>（增强模型）</em>
           </span>
-        </div>
-        <div className="icw-topbar-right">
-          <span className="icw-trial" title="演示版剩余可用天数">剩余 23 天</span>
-          <button
-            className="btn primary"
-            onClick={() => setMsg('升级入口为占位：桌面端接入支付后可用')}
-          >
-            升级
-          </button>
         </div>
       </div>
 
@@ -1618,9 +1696,30 @@ export default function CardLayout() {
 
         <div className="icw-sec">
           <h4>拼版模板</h4>
-          <button className="btn primary block" onClick={saveTemplate}>
-            存为模板（当前排版）
-          </button>
+          <div className="icw-tpl-actions">
+            <button className="btn primary block" onClick={saveTemplate}>
+              存为模板（当前排版）
+            </button>
+            <div className="icw-tpl-io">
+              <button className="btn sm" onClick={exportTemplates} disabled={templates.length === 0}>
+                导出模板
+              </button>
+              <button className="btn sm" onClick={() => tplImportRef.current?.click()}>
+                导入模板
+              </button>
+            </div>
+          </div>
+          <input
+            ref={tplImportRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) importTemplatesFromJson(f);
+              e.currentTarget.value = '';
+            }}
+          />
           {templates.length === 0 ? (
             <p className="icw-tpl-empty">暂无已存模板。调好排版后点上方按钮即可保存，方便下次一键套用。</p>
           ) : (

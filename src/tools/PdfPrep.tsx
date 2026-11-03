@@ -225,6 +225,14 @@ export default function PdfPrep() {
 
   return (
     <div className="pp">
+      {/* ===== 工具级顶栏（只保留工具标识；原爱印的试用/剩余天数/开通按钮不复刻） ===== */}
+      <div className="icw-topbar">
+        <div className="icw-brand">
+          <span className="icw-logo">🛠</span>
+          <span className="icw-brand-name">PDF 预处理</span>
+        </div>
+      </div>
+
       <div className="pp-tabs">
         {TABS.map((t) => (
           <button

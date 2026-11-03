@@ -120,10 +120,7 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .icw-logo { font-size: 20px; }
 .icw-brand-name { font-size: 15px; font-weight: 700; }
 .icw-brand-name em { font-style: normal; font-size: 12px; color: var(--brand); font-weight: 500; }
-.icw-topbar-right { display: flex; align-items: center; gap: 10px; }
-.icw-trial { font-size: 12px; color: #b06a00; background: #fff4e0; border: 1px solid #ffd89a; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
-/* 批量打印标题旁的「试用」小标签（对齐爱印） */
-.bp-trial-tag { font-size: 11px; color: #b06a00; background: #fff4e0; border: 1px solid #ffd89a; border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; font-weight: 500; }
+/* 原爱印的「试用 / 剩余 N 天 / 开通」属于其收费提示，本复刻版不呈现，相关样式一并移除 */
 /* 爱印式上传引导卡 */
 .icw-upload-card { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; background: #fafbfc; }
 .icw-upload-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
@@ -149,6 +146,9 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .icw-tpl-meta .muted { font-size: 10px; }
 .icw-tpl-ops { display: flex; gap: 6px; flex-shrink: 0; }
 .icw-tpl-ops .btn { padding: 3px 10px; font-size: 12px; }
+.icw-tpl-actions { display: flex; flex-direction: column; gap: 6px; }
+.icw-tpl-io { display: flex; gap: 6px; }
+.icw-tpl-io .btn { flex: 1; }
 .btn.sm { padding: 2px 9px; font-size: 12px; }
 /* 模板内联重命名 */
 .icw-tpl-rename { display: flex; align-items: center; gap: 6px; width: 100%; }
@@ -1000,6 +1000,10 @@ kbd { font-family: inherit; background: #f1f3f5; border: 1px solid var(--line); 
 
 /* keep-alive 容器：仅作显隐切换，不影响子组件布局 */
 .tool-keep { height: 100%; }
+
+/* 工具页外壳：工具级顶栏 + 工具主体（主体吃掉顶栏之外的剩余高度） */
+.tool-shell { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
+.tool-shell > .il, .tool-shell > .idp { flex: 1 1 0; height: auto; min-height: 0; }
 
 /* ===== PDF 预处理（自研 5 模块） ===== */
 .pp { display: flex; flex-direction: column; gap: 10px; }

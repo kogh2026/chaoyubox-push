@@ -359,7 +359,16 @@ export default function ImageLayout() {
   const groupCount = items.filter((it) => it.section).length + (items.length > 0 ? 1 : 0);
 
   return (
-    <div className="il">
+    <div className="tool-shell">
+      {/* ===== 工具级顶栏（只保留工具标识；原爱印的试用/剩余天数/开通按钮不复刻） ===== */}
+      <div className="icw-topbar">
+        <div className="icw-brand">
+          <span className="icw-logo">🧩</span>
+          <span className="icw-brand-name">图片拼版</span>
+        </div>
+      </div>
+
+      <div className="il">
       <aside className="il-left">
         <div className="il-left-head">
           <button className="btn primary sm" onClick={() => inputRef.current?.click()} disabled={busy}>
@@ -807,6 +816,7 @@ export default function ImageLayout() {
           )}
         </div>
       </footer>
+      </div>
     </div>
   );
 }
