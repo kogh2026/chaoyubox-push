@@ -41,6 +41,7 @@ describe('DEFAULT_PHOTO_OPTIONS：默认档的唯一真相', () => {
         "presetId": "1cun",
         "sheetMode": "multi",
         "sizeMark": true,
+        "sizeTargetId": "none",
         "specMode": "default",
         "whitenLevel": "natural",
         "whitenOn": false,

@@ -8,6 +8,8 @@ import {
   pagePlacements,
   paginate,
   renderCardPage,
+  LAYOUT_PRESETS,
+  presetForCount,
   type PaperId,
   type Orient,
   type Pos,
@@ -302,6 +304,37 @@ function fmtTplTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/**
+ * 版面预设缩略图（对齐爱印：每页张数用"画出排布的小图"而不是纯数字）。
+ * 纸面按 A4 竖放比例（210:297）画，卡片按 cols×rows 铺，前 count 格填实。
+ */
+function PresetThumb({ cols, rows, count }: { cols: number; rows: number; count: number }) {
+  const W = 34; // 纸宽（viewBox 单位）
+  const H = 48; // 纸高（A4 竖放比例）
+  const padX = 3;
+  const padY = 3;
+  const gap = 1.2;
+  const cw = Math.max(1, (W - padX * 2 - gap * (cols - 1)) / cols);
+  const ch = Math.max(1, (H - padY * 2 - gap * (rows - 1)) / rows);
+  const shown = Math.min(count, cols * rows);
+  return (
+    <svg className="cnt-preset-svg" viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-hidden="true">
+      <rect className="pt-paper" x={0.5} y={0.5} width={W - 1} height={H - 1} rx={1.6} />
+      {Array.from({ length: shown }, (_, i) => (
+        <rect
+          key={i}
+          className="pt-cell"
+          x={padX + (i % cols) * (cw + gap)}
+          y={padY + Math.floor(i / cols) * (ch + gap)}
+          width={cw}
+          height={ch}
+          rx={0.7}
+        />
+      ))}
+    </svg>
+  );
+}
+
 /** 经典 CV 路径：一张图 → 0..N 条卡（检测+多卡拆分） */
 function itemsFromCv(file: File, objectUrl: string, img: HTMLImageElement): CardItem[] {
   const det = detectCards(img);
@@ -464,7 +497,7 @@ export default function CardLayout() {
   const checked = useMemo(() => items.filter((i) => i.checked), [items]);
 
   const cfg: LayoutCfg = useMemo(
-    () => ({ perPage, gap, shrink, pos, offX, offY }),
+    () => ({ perPage, gap, shrink, pos, offX, offY, preset: presetForCount(perPage) }),
     [perPage, gap, shrink, pos, offX, offY],
   );
 
@@ -1551,23 +1584,37 @@ export default function CardLayout() {
 
         <div className="icw-sec">
           <h4>每页张数</h4>
-          <div className="cnt-grid">
-            {([1, 2, 3, 4] as const).map((n) => (
+          <div className="cnt-presets">
+            {LAYOUT_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                className={'cnt-preset' + (perPage === p.count ? ' active' : '')}
+                onClick={() => setPerPage(p.count)}
+                title={`每页 ${p.count} 张 · ${p.cols} 列 × ${p.rows} 行`}
+              >
+                <PresetThumb cols={p.cols} rows={p.rows} count={p.count} />
+                <span>{p.count} 张</span>
+              </button>
+            ))}
+            <button
+              className={'cnt-preset' + (perPage === 'auto' ? ' active' : '')}
+              onClick={() => setPerPage('auto')}
+              title="自动铺满一页（按纸张能放多少放多少）"
+            >
+              <PresetThumb cols={2} rows={4} count={8} />
+              <span>自动</span>
+            </button>
+          </div>
+          <div className="cnt-extra">
+            {([1, 4] as const).map((n) => (
               <button
                 key={n}
                 className={'cnt-btn' + (perPage === n ? ' active' : '')}
                 onClick={() => setPerPage(n)}
               >
-                {n}张
+                {n} 张
               </button>
             ))}
-            <button
-              className={'cnt-btn' + (perPage === 'auto' ? ' active' : '')}
-              onClick={() => setPerPage('auto')}
-              title="自动铺满一页"
-            >
-              更多
-            </button>
           </div>
           <label className="chk" style={{ marginTop: 6 }}>
             <input

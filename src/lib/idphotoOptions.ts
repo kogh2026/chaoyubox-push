@@ -36,6 +36,11 @@ export interface PhotoOptions {
   presetId: string;
   /** 同时导出的规格集合（多选，恒 ≥1） */
   exportSizeIds: string[];
+  /**
+   * 单张输出体积档位（PHOTO_SIZE_PRESETS）。默认 `none` = 不限制；
+   * 选 `20~200 KB` 等档位时导出会对超限的 JPEG 二分 quality 重编码（见 lib/jpegSize.ts）。
+   */
+  sizeTargetId: string;
   // ---- 2. 人像构图 ----
   /** 规格构图模式：默认 / 自定义 / 按规格 / 保持原图 */
   specMode: FramingMode;
@@ -102,6 +107,8 @@ export interface PhotoOptions {
 export const DEFAULT_PHOTO_OPTIONS: PhotoOptions = {
   presetId: '1cun',
   exportSizeIds: ['1cun'],
+  /** 不限制输出体积：保持既有导出行为，需要卡体积时用户手动选档 */
+  sizeTargetId: 'none',
   specMode: 'default',
   fillScale: 1,
   batchAutoFrame: true,

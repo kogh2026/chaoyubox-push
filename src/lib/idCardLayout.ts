@@ -45,6 +45,12 @@ export function paperSize(id: PaperId, orient: Orient): { w: number; h: number; 
 export type Pos = 'top' | 'center' | 'bottom';
 export type ColorMode = 'enhance' | 'bw' | 'color';
 
+/** 显式排布（版面预备用）：指定列/行，其余按"这一页就要这样排"处理 */
+export interface GridPreset {
+  cols: number;
+  rows: number;
+}
+
 export interface LayoutCfg {
   perPage: number | 'auto';
   gap: number; // 卡间距 mm
@@ -52,6 +58,31 @@ export interface LayoutCfg {
   pos: Pos; // 版面位置
   offX: number; // 左右移缩 mm（正=右）
   offY: number; // 上下移缩 mm（正=下）
+  /**
+   * 版面预设：给出显式行列时按预设排（恒自适应缩放到能放下），
+   * 省略/null 则走原有的自动网格推算。
+   */
+  preset?: GridPreset | null;
+}
+
+/**
+ * 版面预设（对齐爱印「每页张数」的排版缩略图：2/3/5/6/11 张）。
+ * 说明：爱印原图的缩略图只给出「几张 + 大致排布」，精确行列按证件横放的复印习惯推定——
+ * 2/3 张竖排一列（正反面上下对应），5/6 张 2 列 3 行，11 张 3 列 4 行（缩到能放下）。
+ */
+export const LAYOUT_PRESETS: { id: string; count: number; cols: number; rows: number }[] = [
+  { id: 'p2', count: 2, cols: 1, rows: 2 },
+  { id: 'p3', count: 3, cols: 1, rows: 3 },
+  { id: 'p5', count: 5, cols: 2, rows: 3 },
+  { id: 'p6', count: 6, cols: 2, rows: 3 },
+  { id: 'p11', count: 11, cols: 3, rows: 4 },
+];
+
+/** 按张数查预设排布；没有对应预设（如 1/4 张或 auto）时返回 null，走自动网格 */
+export function presetForCount(perPage: number | 'auto'): GridPreset | null {
+  if (perPage === 'auto') return null;
+  const p = LAYOUT_PRESETS.find((x) => x.count === perPage);
+  return p ? { cols: p.cols, rows: p.rows } : null;
 }
 
 const PAD = 6; // 打印安全边距 mm
@@ -80,6 +111,37 @@ export function computeCardGrid(
   const uw = paperW - 2 * PAD;
   const uh = paperH - 2 * PAD;
   const gap = cfg.gap;
+
+  // 版面预设：按显式行列排，恒自适应缩放到能放下（预设本身就是"这一页就要这样排"的指令），
+  // 因此不受 shrink 开关影响；usedRows 只算实际占用的行，保证居上/居中/居下锚定正确。
+  if (cfg.preset) {
+    const pc = Math.max(1, Math.floor(cfg.preset.cols));
+    const pr = Math.max(1, Math.floor(cfg.preset.rows));
+    const slots = pc * pr;
+    const want = cfg.perPage === 'auto' ? slots : Math.min(Math.max(1, Math.floor(cfg.perPage)), slots);
+    // 缩放只作用在卡片上，间距是固定 mm —— 所以求 scale 时必须先把间距占掉，
+    // 否则「块宽 = 列×卡宽 + (列-1)×间距」会超出版心（旧版紧凑算法就踩了这个坑）。
+    const sW = pc * cardW > 0 ? (uw - (pc - 1) * gap) / (pc * cardW) : 1;
+    const sH = pr * cardH > 0 ? (uh - (pr - 1) * gap) / (pr * cardH) : 1;
+    const sFit = Math.min(sW, sH);
+    // 下限保护：极端参数下也不返回 0/负尺寸（画面会退化但不崩）
+    const scale = Math.max(0.05, Math.min(1, sFit));
+    const cw = cardW * scale;
+    const ch = cardH * scale;
+    const usedRows = Math.max(1, Math.ceil(want / pc));
+    return {
+      cols: pc,
+      rows: pr,
+      usedRows,
+      perPage: want,
+      capacity: slots,
+      scale,
+      cardW: cw,
+      cardH: ch,
+      blockW: pc * cw + (pc - 1) * gap,
+      blockH: usedRows * ch + (usedRows - 1) * gap,
+    };
+  }
 
   const colsFit = Math.max(1, Math.floor((uw + gap) / (cardW + gap)));
   const rowsFit = Math.max(1, Math.floor((uh + gap) / (cardH + gap)));

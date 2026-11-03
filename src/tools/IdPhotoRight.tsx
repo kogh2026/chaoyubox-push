@@ -4,6 +4,7 @@ import { PAPER_SIZES, PHOTO_PRESETS, type LayoutResult } from '../lib/cardLayout
 import { matteEngineUsable, type MatteEngine } from '../lib/mattingPool';
 import type { FramingMetrics, FramingSpec, FramingVerification } from '../lib/specFraming';
 import type { PhotoOptions, SetPhotoOption } from '../lib/idphotoOptions';
+import { PHOTO_SIZE_PRESETS } from '../lib/jpegSize';
 import SpecFramingPanel from '../components/SpecFramingPanel';
 import type { PhotoItem } from './idphotoTypes';
 
@@ -130,6 +131,7 @@ export default function IdPhotoRight({
   const {
     presetId,
     exportSizeIds,
+    sizeTargetId,
     specMode,
     fillScale,
     batchAutoFrame,
@@ -228,6 +230,28 @@ export default function IdPhotoRight({
               ? `将导出 ${exportSizeIds.length} 个规格 × ${exportCount} 张 = ${exportSizeIds.length * exportCount} 份`
               : '仅导出当前规格'}
           </p>
+        </div>
+        <div className="idp-sizes">
+          <div className="idp-sizes-h">
+            <span>单张文件大小</span>
+            <span className="muted">超限自动压缩</span>
+          </div>
+          <div className="seg">
+            {PHOTO_SIZE_PRESETS.map((s) => (
+              <button
+                key={s.id}
+                className={'seg-btn' + (sizeTargetId === s.id ? ' active' : '')}
+                title={
+                  s.id === 'none'
+                    ? '不限制体积：按原始质量导出'
+                    : `压到 ${s.name}：只在超上限时重编码，未超限的照片零画质损失`
+                }
+                onClick={() => setOption('sizeTargetId', s.id)}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
         </div>
       </StepSection>
 

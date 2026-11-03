@@ -25,6 +25,7 @@ import {
   revealIfWanted,
 } from '../lib/exporter';
 import { poolMatte, setMatteEngine, type MatteEngine } from '../lib/mattingPool';
+import { fitJpegBlob, sizeTargetName, sizeTargetOf } from '../lib/jpegSize';
 import {
   inspectAll,
   framingMetrics,
@@ -235,6 +236,7 @@ export default function IdPhoto() {
   const {
     presetId,
     exportSizeIds,
+    sizeTargetId,
     specMode,
     fillScale,
     batchAutoFrame,
@@ -856,11 +858,18 @@ export default function IdPhoto() {
     setProgress('正在准备导出…');
     try {
       const payload: { name: string; data: Uint8Array }[] = [];
+      /** 体积档位（20~200KB 等）；null = 不限制，原样交出字节 */
+      const sizeTarget = sizeTargetOf(sizeTargetId);
+      /** 压到下限/上限之外的照片张数（只用于结果提示，不阻断导出） */
+      let oversize = 0;
       /** 收一份 300DPI 的 JPEG 进导出队列：命名统一为「证件照_原名_规格.jpg」 */
       const pushJpeg = async (baseName: string, specName: string, blob: Blob) => {
+        // 体积约束：只在超上限时二次重编码（不超就原样用，零画质损失）
+        const fitted = await fitJpegBlob(blob, sizeTarget);
+        if (!fitted.fits) oversize += 1;
         payload.push({
           name: `证件照_${baseName}_${specName}.jpg`,
-          data: withJpegDpi(await bytesOf(blob), DEFAULT_DPI),
+          data: withJpegDpi(await bytesOf(fitted.blob), DEFAULT_DPI),
         });
       };
 
@@ -951,7 +960,14 @@ export default function IdPhoto() {
         onProgress: (p) => setProgress(`正在写入 ${p.done}/${p.total}…`),
       });
       setProgress('');
-      setSaveMsg(res.cancelled ? '已取消保存' : batchMessage(res));
+      setSaveMsg(
+        res.cancelled
+          ? '已取消保存'
+          : batchMessage(res) +
+              (oversize > 0
+                ? `（其中 ${oversize} 张已压到最低质量仍超 ${sizeTargetName(sizeTargetId)}，已按最大压缩交付）`
+                : ''),
+      );
       void revealIfWanted(res.dir ?? undefined);
     } catch (e) {
       setProgress('');

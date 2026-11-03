@@ -34,6 +34,7 @@ import {
   type WhitenLevel,
 } from './idphotoOptions';
 import { atomicGet, atomicSet, backupKey } from './atomicStorage';
+import { PHOTO_SIZE_IDS } from './jpegSize';
 
 /** 存储键。带版本号：字段重命名/删除时换 v2 并补迁移，不要就地改 v1 的语义 */
 const KEY = 'chaoyu.idphoto.options.v1';
@@ -94,6 +95,8 @@ export function normalizePhotoOptions(raw: unknown): PhotoOptions {
     presetId,
     // 约束 1：不继承上次的多选，恒回到「只导出当前规格」
     exportSizeIds: [presetId],
+    // 体积档位属于偏好（不是本次意图），照常落盘
+    sizeTargetId: asId(o.sizeTargetId, PHOTO_SIZE_IDS, d.sizeTargetId),
     specMode: asEnum(o.specMode, FRAMING_MODES, d.specMode),
     fillScale: asNum(o.fillScale, d.fillScale, 1, BOTTOM_FILL_HARD_MAX),
     batchAutoFrame: asBool(o.batchAutoFrame, d.batchAutoFrame),

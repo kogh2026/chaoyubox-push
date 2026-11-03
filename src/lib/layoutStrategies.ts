@@ -151,6 +151,8 @@ export function resolveCardGrid(
   cardH: number,
   cfg: LayoutCfg,
 ): CardGrid {
+  // 版面预设优先：用户显式指定了行列，任何算法都不得改写这个排布
+  if (cfg.preset) return computeCardGrid(paperW, paperH, cardW, cardH, cfg);
   if (algo === 'compact') return compactStrategy(paperW, paperH, cardW, cardH, cfg);
   if (algo === 'adaptive') return adaptiveStrategy(paperW, paperH, cardW, cardH, cfg);
   if (algo === 'maxrects') return maxRectsStrategy(paperW, paperH, cardW, cardH, cfg);
