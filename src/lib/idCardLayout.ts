@@ -22,12 +22,17 @@ export function cardTypeOf(id: string): CardType {
   return CARD_TYPES.find((t) => t.id === id) ?? CARD_TYPES[0];
 }
 
-export type PaperId = 'a4' | 'a5' | 'a3';
+export type PaperId = 'a4' | 'letter' | 'a5' | 'a3';
 export const IC_PAPERS: Record<PaperId, { w: number; h: number; name: string }> = {
   a4: { w: 210, h: 297, name: 'A4' },
+  // Letter（美制信纸 8.5×11 in）：爱印原版有此档，这里补齐以对齐纸张列表
+  letter: { w: 215.9, h: 279.4, name: 'Letter' },
   a5: { w: 148, h: 210, name: 'A5' },
   a3: { w: 297, h: 420, name: 'A3' },
 };
+
+/** 纸张按钮的显示顺序：前三个与爱印一致（A4 / Letter / A3），A5 作为额外档位排最后 */
+export const IC_PAPER_ORDER: PaperId[] = ['a4', 'letter', 'a3', 'a5'];
 
 export type Orient = 'p' | 'l';
 

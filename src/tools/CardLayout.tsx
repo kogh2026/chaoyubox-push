@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CARD_TYPES,
   cardTypeOf,
+  IC_PAPERS,
+  IC_PAPER_ORDER,
   paperSize,
   pagePlacements,
   paginate,
@@ -13,6 +15,7 @@ import {
   type LayoutCfg,
 } from '../lib/idCardLayout';
 import { resolveCardGrid, LAYOUT_ALGOS, type LayoutAlgo } from '../lib/layoutStrategies';
+import CardPdfPreview from './CardPdfPreview';
 import { exportPagesPdf } from '../lib/sheetPdf';
 import { exportVectorSheetPdf, saveVectorSheetPdf } from '../lib/vectorSheetPdf';
 import {
@@ -151,6 +154,20 @@ function itemFromImage(img: HTMLImageElement, dataUrl: string, name: string, typ
   };
 }
 
+/** dataURL 的实际字节数（base64 长度 × 0.75 去掉填充），用于列表显示文件体积 */
+function dataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(',');
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  const pad = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((b64.length * 3) / 4) - pad);
+}
+
+function fmtBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+  return `${n} B`;
+}
+
 // 各类型示例卡的配色与文案（仅用于界面演示，非真实证件）
 const SAMPLE_PALETTE: Record<string, [string, string]> = {
   idcard: ['#e8f0ff', '#c6dcff'],
@@ -227,6 +244,10 @@ function genSampleCardDataUrl(typeId: string): string {
 
 /** localStorage 模板键（命名模板列表） */
 const TPL_LIST_KEY = 'chaoyu.idcard.templates';
+/** 「导出前预览」偏好键（'0' = 关闭；缺省 = 开启） */
+const PV_KEY = 'chaoyu.idcard.previewBeforeExport';
+/** 预览用渲染 DPI：只用于屏幕显示，正式导出仍走 300DPI 矢量/位图 */
+const PV_DPI = 110;
 const TPL_LEGACY_KEY = 'chaoyu.idcard.template'; // 兼容旧单键
 
 /** 模板可序列化的排版设置（与 saveTemplate/applyTemplate 对应） */
@@ -416,6 +437,16 @@ export default function CardLayout() {
   const [editId, setEditId] = useState<string | null>(null); // 正在内联重命名的模板 id
   const [editName, setEditName] = useState(''); // 重命名输入框内容
   const [cropKey, setCropKey] = useState<number | null>(null);
+  // 导出前先弹 PDF 预览（对齐爱印；默认开，可在右栏关掉，Ctrl+S 始终直接落盘）
+  const [previewBeforeExport, setPreviewBeforeExport] = useState(() => {
+    try {
+      return localStorage.getItem(PV_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const [pvOpen, setPvOpen] = useState(false);
+  const [pvPages, setPvPages] = useState<HTMLCanvasElement[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const tplImportRef = useRef<HTMLInputElement>(null);
@@ -426,6 +457,8 @@ export default function CardLayout() {
   importRef.current = handleFiles;
   // 把最新版的 doExportPdf 存进 ref，供 Ctrl+S 监听调用（避免闭包拿到首次渲染的状态）
   const exportPdfRef = useRef<() => void>(() => {});
+  /** Ctrl+S 专用：跳过预览直接落盘（快捷键语义就是「存」） */
+  const savePdfRef = useRef<() => void>(() => {});
 
   const paper = useMemo(() => paperSize(paperId, orient), [paperId, orient]);
   const checked = useMemo(() => items.filter((i) => i.checked), [items]);
@@ -925,7 +958,7 @@ export default function CardLayout() {
           setMsg('还没有可导出的页面');
           return;
         }
-        exportPdfRef.current();
+        savePdfRef.current();
       }
     };
     document.addEventListener('fullscreenchange', onFsChange);
@@ -997,7 +1030,8 @@ export default function CardLayout() {
 
   // 导出优先走矢量拼版（A2：去重 + 矢量裁切口/水印，体积更小且放大不糊）；
   // 若环境不支持画布编码，则回退整页位图路径，行为与旧版一致。
-  function doExportPdf() {
+  /** 真正落盘（矢量优先，失败回退 300DPI 位图）。预览窗口的「保存」与关闭预览都走这里 */
+  function savePdfNow() {
     if (pages.length === 0) return;
     setBusy(true);
     setMsg('');
@@ -1034,8 +1068,32 @@ export default function CardLayout() {
         .finally(() => setBusy(false));
     }, 30);
   }
+
+  /** 导出入口：开了「导出前预览」就先弹预览（爱印流程），否则直接落盘 */
+  function doExportPdf() {
+    if (pages.length === 0) return;
+    if (previewBeforeExport) {
+      setMsg('');
+      setPvOpen(true);
+      return;
+    }
+    savePdfNow();
+  }
   // 每轮渲染都把最新 doExportPdf 闭包写进 ref，供 Ctrl+S 监听取用（避免拿到过期状态）
   exportPdfRef.current = doExportPdf;
+  savePdfRef.current = savePdfNow;
+
+  // 预览打开期间改设置 → 按新设置重渲染预览页（低 DPI，开销小），做到「边预览边调」
+  useEffect(() => {
+    if (!pvOpen) return;
+    try {
+      setPvPages(renderAll(PV_DPI / 25.4));
+    } catch {
+      setMsg('预览生成失败');
+    }
+    // renderAll 是 useCallback，依赖已在下面列全，避免把它放进依赖导致重复触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pvOpen, colorMode, sat, sharpen, wmOn, wmText, cropMarks, roundMm, paper, placements, pages]);
 
   // 打印：与导出同源的矢量拼版 PDF → 主进程 PDFium 静默直出（纸张跟随 PDF）；
   // 矢量编码不可用时回退 300DPI 整页位图，保证任何环境下都能出纸
@@ -1296,14 +1354,19 @@ export default function CardLayout() {
                   </span>
                 </div>
                 {it.manual && <div className="ph-msg">已应用手动角点校正。</div>}
+                <div className="ph-file" title={it.name}>
+                  <span>{it.name}</span>
+                  <em>{fmtBytes(dataUrlBytes(shown))}</em>
+                </div>
                 <select
                   className="ph-type"
                   value={it.type}
                   onChange={(e) => update(it.key, { type: e.target.value, typeManual: true })}
+                  title="证件类型（决定排版比例与导出尺寸）"
                 >
                   {CARD_TYPES.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} {c.w}×{c.h} mm
                     </option>
                   ))}
                 </select>
@@ -1459,13 +1522,14 @@ export default function CardLayout() {
         <div className="icw-sec">
           <h4>纸张尺寸</h4>
           <div className="seg">
-            {(['a4', 'a5', 'a3'] as PaperId[]).map((id) => (
+            {IC_PAPER_ORDER.map((id) => (
               <button
                 key={id}
                 className={'seg-btn' + (paperId === id ? ' active' : '')}
                 onClick={() => setPaperId(id)}
+                title={`${IC_PAPERS[id].name} ${IC_PAPERS[id].w}×${IC_PAPERS[id].h} mm`}
               >
-                {id.toUpperCase()}
+                {IC_PAPERS[id].name}
               </button>
             ))}
           </div>
@@ -1629,9 +1693,10 @@ export default function CardLayout() {
           <div className="seg">
             {(
               [
-                ['enhance', '打印增强'],
-                ['bw', '黑白'],
-                ['color', '彩色'],
+                // 命名对齐爱印：增强 / 灰度扫描 / 原色（枚举值不变，仅改展示文案）
+                ['enhance', '增强'],
+                ['bw', '灰度扫描'],
+                ['color', '原色'],
               ] as [ColorMode, string][]
             ).map(([v, label]) => (
               <button
@@ -1692,6 +1757,30 @@ export default function CardLayout() {
               placeholder="水印文字"
             />
           )}
+        </div>
+
+        <div className="icw-sec">
+          <h4>导出</h4>
+          <label className="chk">
+            <input
+              type="checkbox"
+              checked={previewBeforeExport}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setPreviewBeforeExport(v);
+                try {
+                  localStorage.setItem(PV_KEY, v ? '1' : '0');
+                } catch {
+                  /* 存不了就只在本次会话生效 */
+                }
+              }}
+            />
+            导出 PDF 前先预览
+          </label>
+          <p className="hint">
+            开启后点「导 PDF」会先弹出预览：可翻页、缩放、核对排版再保存（对齐爱印）。
+            <kbd>Ctrl</kbd>+<kbd>S</kbd> 始终直接落盘，不走预览。
+          </p>
         </div>
 
         <div className="icw-sec">
@@ -1787,6 +1876,24 @@ export default function CardLayout() {
           onApply={(r) => {
             update(cropItem.key, { corrected: r, manual: true });
             setCropKey(null);
+          }}
+        />
+      )}
+
+      {pvOpen && pvPages.length > 0 && (
+        <CardPdfPreview
+          pages={pvPages}
+          paperName={paper.name}
+          fileName={`证卡拼版_${paper.name}_${pages.length}页.pdf`}
+          saving={busy}
+          onSave={() => {
+            setPvOpen(false);
+            setPvPages([]);
+            savePdfNow();
+          }}
+          onClose={() => {
+            setPvOpen(false);
+            setPvPages([]);
           }}
         />
       )}

@@ -178,6 +178,10 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 .ph-imgbox img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform .15s var(--ease); animation: phImgIn .4s var(--ease) both; }
 .ph-ratio { position: absolute; bottom: 2px; right: 4px; font-size: 9px; color: #fff; background: rgba(0,0,0,.45); border-radius: 4px; padding: 0 4px; }
 .ph-type { width: 100%; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+/* 文件名 + 体积（对齐爱印列表项：文件名 1.4 MB） */
+.ph-file { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.ph-file span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-file em { font-style: normal; flex-shrink: 0; color: #6b7a90; }
 /* P1-B 证件类型识别状态行 */
 .ph-ocr { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 3px; font-size: 11px; }
 .ph-ocr .ok { color: var(--brand); }
@@ -1183,3 +1187,30 @@ kbd { font-family: inherit; background: #f1f3f5; border: 1px solid var(--line); 
   .pdfx-files .pp-file { flex-wrap: wrap; }
   .param-row > label { min-width: 72px; }
 }
+
+/* ===== PDF 预览（对齐爱印「PDF 预览」窗口：左页缩略图 + 中画布 + 顶栏工具） =====
+   遮罩只盖左栏+中栏，右边拼版设置保持可点（原版行为：边预览边调设置）。 */
+.pv-mask { position: fixed; left: 16px; top: 16px; bottom: 16px; right: calc(264px + 44px); z-index: 60; display: flex; }
+.pv-win { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 48px rgba(15, 23, 42, .18); overflow: hidden; }
+.pv-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fbfcfe; }
+.pv-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.pv-title b { font-size: 14px; }
+.pv-title span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.pv-tools .btn.active { border-color: var(--brand); color: var(--brand); background: #eef4ff; }
+.pv-zoom { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 8px; padding: 2px 4px; }
+.pv-zoom button { width: 22px; height: 22px; border: 0; background: transparent; cursor: pointer; font-size: 14px; color: var(--text); }
+.pv-zoom button:hover { background: #f0f2f5; border-radius: 6px; }
+.pv-zoom em { font-style: normal; font-size: 12px; min-width: 44px; text-align: center; color: var(--text); }
+.pv-x { width: 28px; height: 28px; border: 0; background: transparent; cursor: pointer; font-size: 14px; color: var(--muted); border-radius: 8px; }
+.pv-x:hover { background: #f0f2f5; color: var(--text); }
+.pv-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 132px minmax(0, 1fr); }
+.pv-thumbs { border-right: 1px solid var(--line); padding: 10px; overflow: auto; display: flex; flex-direction: column; gap: 10px; background: #fafbfd; }
+.pv-thumb { position: relative; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; padding: 4px; cursor: pointer; }
+.pv-thumb.on { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(37, 99, 235, .12); }
+.pv-thumb img { display: block; width: 100%; border-radius: 4px; }
+.pv-thumb span { position: absolute; left: 6px; bottom: 4px; font-size: 10px; color: var(--muted); }
+.pv-stage { overflow: auto; display: flex; background: #eef1f6; padding: 10px; }
+.pv-canvas { margin: auto; background: #fff; box-shadow: 0 2px 12px rgba(15, 23, 42, .14); }
+.pv-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); background: #fbfcfe; }
+@media (max-width: 1180px) { .pv-mask { right: 16px; } }
