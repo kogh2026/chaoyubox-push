@@ -115,6 +115,23 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", "PingFang S
 
 /* ===== 证卡拼版（增强模式三栏工作台） ===== */
 .icw { display: grid; grid-template-columns: 320px minmax(0, 1fr) 264px; gap: 14px; align-items: start; }
+.icw-topbar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.icw-brand { display: flex; align-items: center; gap: 8px; }
+.icw-logo { font-size: 20px; }
+.icw-brand-name { font-size: 15px; font-weight: 700; }
+.icw-brand-name em { font-style: normal; font-size: 12px; color: var(--brand); font-weight: 500; }
+.icw-topbar-right { display: flex; align-items: center; gap: 10px; }
+.icw-trial { font-size: 12px; color: #b06a00; background: #fff4e0; border: 1px solid #ffd89a; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+/* 爱印式上传引导卡 */
+.icw-upload-card { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; background: #fafbfc; }
+.icw-upload-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.icw-upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.icw-upload-grid button { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 0; font-size: 12px; cursor: pointer; }
+.icw-upload-grid button:hover { border-color: var(--brand); color: var(--brand); }
+.icw-upload-hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
+.icw-upload-hint kbd { background: #eef1f5; border-radius: 4px; padding: 0 5px; font-size: 11px; }
+.ph-privacy { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; background: #f3f6fb; border-radius: 8px; padding: 6px 8px; }
+.ph-privacy b { color: #3a4a6b; }
 .icw-col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 .icw-left { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh / var(--ui-zoom, 1) - 72px); overflow-y: auto; }
 .icw-center { display: flex; flex-direction: column; gap: 10px; }

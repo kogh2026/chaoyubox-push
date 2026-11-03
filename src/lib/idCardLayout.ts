@@ -36,7 +36,8 @@ export function paperSize(id: PaperId, orient: Orient): { w: number; h: number; 
   return orient === 'l' ? { w: p.h, h: p.w, name: p.name } : { w: p.w, h: p.h, name: p.name };
 }
 
-export type Pos = 'tl' | 'center' | 'br';
+/** 版面位置（对齐爱印：仅纵向锚定，水平恒居中；可用 offX 微调） */
+export type Pos = 'top' | 'center' | 'bottom';
 export type ColorMode = 'enhance' | 'bw' | 'color';
 
 export interface LayoutCfg {
@@ -129,13 +130,12 @@ export function pagePlacements(
   g: CardGrid,
   cfg: LayoutCfg,
 ): Placement[] {
-  let x0: number;
-  if (cfg.pos === 'tl') x0 = PAD;
-  else if (cfg.pos === 'br') x0 = paperW - PAD - g.blockW;
-  else x0 = (paperW - g.blockW) / 2;
+  // 水平恒居中（对齐爱印：横向不锚定，可用 offX 微调）
+  let x0 = (paperW - g.blockW) / 2;
+  // 纵向锚定：居上/居中/居下
   let y0: number;
-  if (cfg.pos === 'tl') y0 = PAD;
-  else if (cfg.pos === 'br') y0 = paperH - PAD - g.blockH;
+  if (cfg.pos === 'top') y0 = PAD;
+  else if (cfg.pos === 'bottom') y0 = paperH - PAD - g.blockH;
   else y0 = (paperH - g.blockH) / 2;
   x0 += cfg.offX;
   y0 += cfg.offY;

@@ -124,6 +124,85 @@ function baseItem(
   };
 }
 
+/** 从任意 URL/src 解码为 HTMLImageElement（不接管 objectURL 生命周期） */
+function loadImageFromSrc(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片读取失败'));
+    img.src = src;
+  });
+}
+
+/** 直接由已解码的图片 + dataURL 构造一条可导出条目（用于示例照片 / 粘贴） */
+function itemFromImage(img: HTMLImageElement, dataUrl: string, name: string): CardItem {
+  return {
+    key: KEY++,
+    name,
+    img,
+    dataUrl,
+    type: 'idcard',
+    rotation: 0,
+    checked: true,
+    copies: 1,
+    quad: FULL_QUAD,
+    confidence: 0.9, // 示例/粘贴：视为可靠，直接可导出
+    manual: false,
+  };
+}
+
+/** 生成一张「示例证件照」dataURL（蓝底卡片 + 照片框 + 占位文字），仅用于界面演示 */
+function genSampleCardDataUrl(): string {
+  const c = document.createElement('canvas');
+  c.width = 856;
+  c.height = 540;
+  const x = c.getContext('2d')!;
+  const g = x.createLinearGradient(0, 0, c.width, c.height);
+  g.addColorStop(0, '#dfe9ff');
+  g.addColorStop(1, '#b9d0ff');
+  x.fillStyle = g;
+  x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = '#ffffff';
+  x.fillRect(48, 70, 220, 260);
+  x.fillStyle = '#cdd8ee';
+  x.fillRect(72, 96, 172, 208);
+  x.fillStyle = '#33415c';
+  x.font = 'bold 36px sans-serif';
+  x.fillText('示例证件照', 320, 140);
+  x.fillStyle = '#5a6b8c';
+  x.font = '24px sans-serif';
+  x.fillText('姓名：示例用户', 320, 210);
+  x.fillText('证件号：****************', 320, 264);
+  x.fillText('仅供界面演示 · 本地处理', 320, 318);
+  x.strokeStyle = '#9bb4e6';
+  x.lineWidth = 4;
+  x.strokeRect(2, 2, c.width - 4, c.height - 4);
+  return c.toDataURL('image/png');
+}
+
+/** localStorage 模板键（存为模板 / 应用模板） */
+const TPL_KEY = 'chaoyu.idcard.template';
+
+/** 模板可序列化的排版设置（与 saveTemplate/applyTemplate 对应） */
+interface LayoutTemplate {
+  paperId: PaperId;
+  orient: Orient;
+  perPage: number | 'auto';
+  gap: number;
+  shrink: boolean;
+  pos: Pos;
+  offX: number;
+  offY: number;
+  colorMode: ColorMode;
+  sat: number;
+  sharpen: number;
+  roundMm: number;
+  wmOn: boolean;
+  wmText: string;
+  algo: LayoutAlgo;
+  cropMarks: boolean;
+}
+
 /** 经典 CV 路径：一张图 → 0..N 条卡（检测+多卡拆分） */
 function itemsFromCv(file: File, objectUrl: string, img: HTMLImageElement): CardItem[] {
   const det = detectCards(img);
@@ -254,9 +333,22 @@ export default function CardLayout() {
   const [notice, setNotice] = useState(true);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [hasTemplate, setHasTemplate] = useState(() => {
+    try {
+      return !!localStorage.getItem(TPL_KEY);
+    } catch {
+      return false;
+    }
+  });
+  const [isFs, setIsFs] = useState(false); // 全屏态
   const [cropKey, setCropKey] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
+  // 把 handleFiles 存进 ref，供全局粘贴监听调用，避免闭包拿到过期状态
+  const importRef = useRef<(f: FileList | File[] | null) => void>(() => {});
+  importRef.current = handleFiles;
 
   const paper = useMemo(() => paperSize(paperId, orient), [paperId, orient]);
   const checked = useMemo(() => items.filter((i) => i.checked), [items]);
@@ -370,7 +462,7 @@ export default function CardLayout() {
     if (pageIdx > pages.length - 1) setPageIdx(Math.max(0, pages.length - 1));
   }, [pages.length, pageIdx]);
 
-  async function handleFiles(list: FileList | null) {
+  async function handleFiles(list: FileList | File[] | null) {
     if (!list || list.length === 0) return;
     setBusy(true);
     const files = Array.from(list).filter((f) => f.type.startsWith('image/'));
@@ -454,6 +546,89 @@ export default function CardLayout() {
     enqueueOcr(added);
   }
 
+  // 试试示例照片：本地合成一张演示卡面，直接进排版（不经过检测）
+  async function addSample() {
+    try {
+      const dataUrl = genSampleCardDataUrl();
+      const img = await loadImageFromSrc(dataUrl);
+      setItems((prev) => [...prev, itemFromImage(img, dataUrl, `示例证件照 ${prev.length + 1}`)]);
+      setMsg('已添加示例证件照（演示用，本地生成）');
+    } catch {
+      setMsg('示例照片生成失败');
+    }
+  }
+
+  // 存为模板：把当前排版相关设置序列化进 localStorage
+  function saveTemplate() {
+    const tpl: LayoutTemplate = {
+      paperId,
+      orient,
+      perPage,
+      gap,
+      shrink,
+      pos,
+      offX,
+      offY,
+      colorMode,
+      sat,
+      sharpen,
+      roundMm,
+      wmOn,
+      wmText,
+      algo,
+      cropMarks,
+    };
+    try {
+      localStorage.setItem(TPL_KEY, JSON.stringify(tpl));
+      setHasTemplate(true);
+      setMsg('已存为模板（本地保存）');
+    } catch {
+      setMsg('保存模板失败');
+    }
+  }
+
+  // 应用模板：从 localStorage 读回并套用
+  function applyTemplate() {
+    try {
+      const raw = localStorage.getItem(TPL_KEY);
+      if (!raw) {
+        setMsg('暂无已存模板');
+        return;
+      }
+      const t = JSON.parse(raw) as Partial<LayoutTemplate>;
+      if (t.paperId) setPaperId(t.paperId);
+      if (t.orient) setOrient(t.orient);
+      if (t.perPage !== undefined) setPerPage(t.perPage);
+      if (t.gap !== undefined) setGap(t.gap);
+      if (t.shrink !== undefined) setShrink(t.shrink);
+      if (t.pos) setPos(t.pos);
+      if (t.offX !== undefined) setOffX(t.offX);
+      if (t.offY !== undefined) setOffY(t.offY);
+      if (t.colorMode) setColorMode(t.colorMode);
+      if (t.sat !== undefined) setSat(t.sat);
+      if (t.sharpen !== undefined) setSharpen(t.sharpen);
+      if (t.roundMm !== undefined) setRoundMm(t.roundMm);
+      if (t.wmOn !== undefined) setWmOn(t.wmOn);
+      if (t.wmText !== undefined) setWmText(t.wmText);
+      if (t.algo) setAlgo(t.algo);
+      if (t.cropMarks !== undefined) setCropMarks(t.cropMarks);
+      setMsg('已应用模板');
+    } catch {
+      setMsg('模板数据损坏，无法应用');
+    }
+  }
+
+  // 全屏：在「中栏画布区」与原窗口之间切换
+  function toggleFullscreen() {
+    const el = centerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void el.requestFullscreen?.();
+    }
+  }
+
   function update(key: number, patch: Partial<CardItem>) {
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
   }
@@ -520,6 +695,37 @@ export default function CardLayout() {
   }
 
   // 退出时释放 OCR Worker（chi_sim + wasm 常驻内存，不用了要及时还回去）
+  // 全屏状态同步 + 全局粘贴导入（Ctrl+V 直接粘截图）
+  useEffect(() => {
+    const onFsChange = () => setIsFs(!!document.fullscreenElement);
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      // 正在输入框打字时不拦截（避免误吞文本粘贴）
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const dt = e.clipboardData;
+      if (!dt) return;
+      const files: File[] = [];
+      for (const it of Array.from(dt.items)) {
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+          const f = it.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (files.length) {
+        e.preventDefault();
+        void importRef.current(files);
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    window.addEventListener('paste', onPaste);
+    // 扫描文件夹：webkitdirectory 非标准属性，用 setAttribute 规避 JSX 类型问题
+    if (folderRef.current) folderRef.current.setAttribute('webkitdirectory', '');
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      window.removeEventListener('paste', onPaste);
+    };
+  }, []);
+
   useEffect(() => {
     return () => {
       void disposeOcrWorker();
@@ -718,8 +924,54 @@ export default function CardLayout() {
 
   return (
     <div className="icw">
+      {/* ===== 工具级顶栏（对齐爱印：标题 + 试用状态 + 升级） ===== */}
+      <div className="icw-topbar">
+        <div className="icw-brand">
+          <span className="icw-logo">🪪</span>
+          <span className="icw-brand-name">
+            证卡拼版助手<em>（增强模型）</em>
+          </span>
+        </div>
+        <div className="icw-topbar-right">
+          <span className="icw-trial" title="演示版剩余可用天数">剩余 23 天</span>
+          <button
+            className="btn primary"
+            onClick={() => setMsg('升级入口为占位：桌面端接入支付后可用')}
+          >
+            升级
+          </button>
+        </div>
+      </div>
+
       {/* ===== 左栏：照片卡列表 ===== */}
       <section className="icw-col icw-left">
+        {/* 爱印式上传引导：选择照片 / 示例照片 / 扫描文件夹 / Ctrl+V / 隐私说明 */}
+        <div className="icw-upload-card">
+          <div className="icw-upload-title">添加证件照片</div>
+          <div className="icw-upload-grid">
+            <button onClick={() => inputRef.current?.click()}>选择照片</button>
+            <button onClick={() => void addSample()}>试试示例照片</button>
+            <button onClick={() => folderRef.current?.click()}>扫描文件夹</button>
+          </div>
+          <div className="icw-upload-hint">
+            支持 <kbd>Ctrl</kbd>+<kbd>V</kbd> 直接粘贴截图 / 照片
+          </div>
+          <div className="ph-privacy">
+            <b>隐私说明：</b>所有照片仅在本地处理，不会上传任何服务器。
+          </div>
+          <input
+            ref={folderRef}
+            type="file"
+            multiple
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              handleFiles(e.target.files);
+              e.currentTarget.value = '';
+            }}
+          />
+        </div>
+
         <div className="icw-toolbar">
           <label className="chk">
             <input type="checkbox" checked={allChecked} onChange={toggleAll} />
@@ -910,7 +1162,7 @@ export default function CardLayout() {
       </section>
 
       {/* ===== 中栏：画布 ===== */}
-      <section className="icw-center">
+      <section className="icw-center" ref={centerRef}>
         <div className="icw-cbar">
           <span className="icw-cbar-info">
             {paper.name}·共 {pages.length} 页 PDF
@@ -936,6 +1188,20 @@ export default function CardLayout() {
               onClick={() => exportImages('jpeg')}
             >
               另存图片
+            </button>
+            <button className="btn" onClick={saveTemplate} title="把当前排版设置存为本地模板">
+              存为模板
+            </button>
+            <button
+              className="btn"
+              disabled={!hasTemplate}
+              onClick={applyTemplate}
+              title={hasTemplate ? '套用已保存的本地模板' : '暂无已存模板'}
+            >
+              应用模板
+            </button>
+            <button className="btn" onClick={toggleFullscreen} title="全屏查看画布">
+              {isFs ? '退出全屏' : '全屏'}
             </button>
           </span>
         </div>
@@ -1084,9 +1350,9 @@ export default function CardLayout() {
           <div className="seg">
             {(
               [
-                ['tl', '左上'],
+                ['top', '居上'],
                 ['center', '居中'],
-                ['br', '右下'],
+                ['bottom', '居下'],
               ] as [Pos, string][]
             ).map(([v, label]) => (
               <button
@@ -1102,8 +1368,8 @@ export default function CardLayout() {
             <span>上下移缩</span>
             <input
               type="range"
-              min={-79}
-              max={79}
+              min={-148}
+              max={148}
               value={offY}
               onChange={(e) => setOffY(Number(e.target.value))}
             />
